@@ -3,8 +3,13 @@ targets:
     builders:
       freezed:
         generate_for:
+          - lib/models/**.dart
           - lib/shared/models/**.dart
           - lib/features/**/models/**.dart
+      source_gen|combining_builder:
+        options:
+          ignore_for_file:
+            - unnecessary_null_checks
       riverpod_generator:
         generate_for:
           - lib/**/*.dart

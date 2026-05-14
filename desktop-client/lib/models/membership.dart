@@ -1,28 +1,32 @@
 // GENERATED — do not edit by hand. Run: node shared-models/generate.js
 // ignore_for_file: lines_longer_than_80_chars, public_member_api_docs
 
-enum MembershipRole { lead, member, observer }
+import 'package:freezed_annotation/freezed_annotation.dart';
 
-class Membership {
-  const Membership({
-    required this.userId,
-    required this.projectId,
-    required this.role,
-  });
+part 'membership.freezed.dart';
+part 'membership.g.dart';
 
-  factory Membership.fromJson(Map<String, dynamic> json) => Membership(
-    userId: json['user_id'] as String,
-    projectId: json['project_id'] as String,
-    role: MembershipRole.values.firstWhere((e) => e.name == json['role'] as String),
-  );
+@JsonEnum()
+enum MembershipRole {
+  lead,
+  member,
+  observer,
+}
 
-  final String userId;
-  final String projectId;
-  final MembershipRole role;
+@freezed
+abstract class Membership with _$Membership {
+  // ignore: invalid_annotation_target
+  @JsonSerializable(fieldRename: FieldRename.snake)
+  const factory Membership({
+    required String id,
+    required String userId,
+    required String projectId,
+    required MembershipRole role,
+    required int joinedAt,
+    required int updatedAt,
+    String? invitedBy,
+  }) = _Membership;
 
-  Map<String, dynamic> toJson() => <String, dynamic>{
-      'user_id': userId,
-      'project_id': projectId,
-      'role': role.name,
-  };
+  factory Membership.fromJson(Map<String, dynamic> json) =>
+      _$MembershipFromJson(json);
 }

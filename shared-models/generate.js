@@ -1,183 +1,134 @@
 #!/usr/bin/env node
+'use strict';
+
 const fs = require('fs');
 const path = require('path');
 
 const SCHEMAS_DIR = path.join(__dirname, 'schemas');
-const OUTPUT_DIR = path.join(__dirname, '..', 'desktop-client', 'lib', 'models');
+const DART_OUT_DIR = path.join(__dirname, '..', 'desktop-client', 'lib', 'models');
 
-const SCHEMA_FILES = [
-  'task.json', 'project.json', 'note.json', 'message.json', 'user.json', 'membership.json',
-];
-
-function toCamelCase(s) {
+function toCamel(s) {
   return s.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
 }
 
-function toPascalCase(s) {
-  const c = toCamelCase(s);
-  return c.charAt(0).toUpperCase() + c.slice(1);
+function toPascal(s) {
+  const c = toCamel(s);
+  return c[0].toUpperCase() + c.slice(1);
 }
 
-function singularize(s) {
-  return s.endsWith('s') ? s.slice(0, -1) : s;
+function dartBaseType(jsonType) {
+  switch (jsonType) {
+    case 'string':  return 'String';
+    case 'integer': return 'int';
+    case 'boolean': return 'bool';
+    case 'number':  return 'double';
+    default:        return 'dynamic';
+  }
 }
 
-function resolveRawType(prop) {
-  const t = prop.type;
-  if (Array.isArray(t)) return t.find((x) => x !== 'null');
-  return t;
-}
+function resolveFieldInfo(propName, prop, className, requiredSet) {
+  const isRequired = requiredSet.has(propName);
+  const rawTypes = Array.isArray(prop.type) ? prop.type : [prop.type ?? 'string'];
+  const isNullable = rawTypes.includes('null') || !isRequired;
+  const baseTypes = rawTypes.filter((t) => t !== 'null');
 
-function isNullable(fieldName, prop, requiredFields) {
-  const t = prop.type;
-  if (Array.isArray(t) && t.includes('null')) return true;
-  return !requiredFields.includes(fieldName);
-}
-
-function resolveDartType(fieldName, prop, requiredFields, parentClass) {
-  const nullable = isNullable(fieldName, prop, requiredFields);
-  const raw = resolveRawType(prop);
-
-  let dartType;
   if (prop.enum) {
-    dartType = `${parentClass}${toPascalCase(fieldName)}`;
-  } else if (raw === 'array' && prop.items?.type === 'object') {
-    dartType = `List<${parentClass}${toPascalCase(singularize(fieldName))}>`;
-  } else {
-    switch (raw) {
-      case 'string': dartType = 'String'; break;
-      case 'integer': dartType = 'int'; break;
-      case 'number': dartType = 'double'; break;
-      case 'boolean': dartType = 'bool'; break;
-      default: dartType = 'String';
+    const nonNull = prop.enum.filter((v) => v !== null);
+    if (nonNull.length > 0) {
+      const enumName = `${className}${toPascal(propName)}`;
+      const dartType = isNullable ? `${enumName}?` : enumName;
+      return { dartType, enumName, enumValues: nonNull };
+    }
+    return { dartType: 'String?', enumName: null, enumValues: [] };
+  }
+
+  const base = dartBaseType(baseTypes[0]);
+  return { dartType: isNullable ? `${base}?` : base, enumName: null, enumValues: [] };
+}
+
+function generateDart(schema) {
+  const id = schema.$id;
+  const className = toPascal(id);
+  const requiredSet = new Set(schema.required ?? []);
+  const entries = Object.entries(schema.properties ?? {});
+
+  const lines = [];
+  lines.push('// GENERATED — do not edit by hand. Run: node shared-models/generate.js');
+  lines.push('// ignore_for_file: lines_longer_than_80_chars, public_member_api_docs');
+  lines.push('');
+  lines.push("import 'package:freezed_annotation/freezed_annotation.dart';");
+  lines.push('');
+  lines.push(`part '${id}.freezed.dart';`);
+  lines.push(`part '${id}.g.dart';`);
+  lines.push('');
+
+  // Enums before class
+  for (const [propName, prop] of entries) {
+    const info = resolveFieldInfo(propName, prop, className, requiredSet);
+    if (info.enumName) {
+      lines.push('@JsonEnum()');
+      lines.push(`enum ${info.enumName} {`);
+      for (const v of info.enumValues) {
+        lines.push(`  ${toCamel(String(v))},`);
+      }
+      lines.push('}');
+      lines.push('');
     }
   }
 
-  return nullable ? `${dartType}?` : dartType;
-}
+  // Freezed class
+  lines.push('@freezed');
+  lines.push(`abstract class ${className} with _$${className} {`);
+  lines.push('  // ignore: invalid_annotation_target');
+  lines.push('  @JsonSerializable(fieldRename: FieldRename.snake)');
+  lines.push(`  const factory ${className}({`);
 
-function buildClass(className, schemaDef, enumDefs, extraClasses) {
-  const props = schemaDef.properties || {};
-  const required = schemaDef.required || [];
-
-  const requiredEntries = Object.entries(props).filter(([k]) => required.includes(k));
-  const optionalEntries = Object.entries(props).filter(([k]) => !required.includes(k));
-  const orderedEntries = [...requiredEntries, ...optionalEntries];
-
-  const fields = [];
-  const ctorParams = [];
-  const fromJsonLines = [];
-  const toJsonLines = [];
-
-  for (const [fieldName, prop] of orderedEntries) {
-    const camel = toCamelCase(fieldName);
-    const req = required.includes(fieldName);
-    const nullable = isNullable(fieldName, prop, required);
-    const raw = resolveRawType(prop);
-    const dartType = resolveDartType(fieldName, prop, required, className);
-
-    if (prop.enum) {
-      const enumName = `${className}${toPascalCase(fieldName)}`;
-      enumDefs.push(`enum ${enumName} { ${prop.enum.join(', ')} }`);
-      fields.push(`  final ${dartType} ${camel};`);
-      ctorParams.push(`    ${req ? 'required ' : ''}this.${camel},`);
-      if (nullable) {
-        fromJsonLines.push(
-          `    ${camel}: json['${fieldName}'] == null ? null` +
-          ` : ${enumName}.values.firstWhere((e) => e.name == json['${fieldName}'] as String),`,
-        );
-        toJsonLines.push(`      '${fieldName}': ${camel}?.name,`);
-      } else {
-        fromJsonLines.push(
-          `    ${camel}: ${enumName}.values.firstWhere((e) => e.name == json['${fieldName}'] as String),`,
-        );
-        toJsonLines.push(`      '${fieldName}': ${camel}.name,`);
-      }
-    } else if (raw === 'array' && prop.items?.type === 'object') {
-      const itemClass = `${className}${toPascalCase(singularize(fieldName))}`;
-      const nestedEnums = [];
-      extraClasses.push(buildClass(itemClass, prop.items, nestedEnums, []));
-      enumDefs.push(...nestedEnums);
-
-      fields.push(`  final ${dartType} ${camel};`);
-      ctorParams.push(`    ${req ? 'required ' : ''}this.${camel},`);
-      if (nullable) {
-        fromJsonLines.push(
-          `    ${camel}: (json['${fieldName}'] as List<dynamic>?)` +
-          `?.map((e) => ${itemClass}.fromJson(e as Map<String, dynamic>)).toList(),`,
-        );
-        toJsonLines.push(`      '${fieldName}': ${camel}?.map((e) => e.toJson()).toList(),`);
-      } else {
-        fromJsonLines.push(
-          `    ${camel}: (json['${fieldName}'] as List<dynamic>)` +
-          `.map((e) => ${itemClass}.fromJson(e as Map<String, dynamic>)).toList(),`,
-        );
-        toJsonLines.push(`      '${fieldName}': ${camel}.map((e) => e.toJson()).toList(),`);
-      }
-    } else {
-      fields.push(`  final ${dartType} ${camel};`);
-      ctorParams.push(`    ${req ? 'required ' : ''}this.${camel},`);
-      fromJsonLines.push(`    ${camel}: json['${fieldName}'] as ${dartType},`);
-      toJsonLines.push(`      '${fieldName}': ${camel},`);
-    }
+  const required = entries.filter(([n]) => requiredSet.has(n));
+  const optional = entries.filter(([n]) => !requiredSet.has(n));
+  for (const [propName, prop] of [...required, ...optional]) {
+    const info = resolveFieldInfo(propName, prop, className, requiredSet);
+    const isRequired = requiredSet.has(propName);
+    const dartName = toCamel(propName);
+    const req = isRequired ? 'required ' : '';
+    lines.push(`    ${req}${info.dartType} ${dartName},`);
   }
 
-  return [
-    `class ${className} {`,
-    `  const ${className}({`,
-    ...ctorParams,
-    `  });`,
-    ``,
-    `  factory ${className}.fromJson(Map<String, dynamic> json) => ${className}(`,
-    ...fromJsonLines,
-    `  );`,
-    ``,
-    ...fields,
-    ``,
-    `  Map<String, dynamic> toJson() => <String, dynamic>{`,
-    ...toJsonLines,
-    `  };`,
-    `}`,
-  ].join('\n');
+  lines.push(`  }) = _${className};`);
+  lines.push('');
+  lines.push(`  factory ${className}.fromJson(Map<String, dynamic> json) =>`);
+  lines.push(`      _$${className}FromJson(json);`);
+  lines.push('}');
+
+  return lines.join('\n') + '\n';
 }
 
-function generateDartFile(schema) {
-  const className = toPascalCase(schema.$id);
-  const enumDefs = [];
-  const extraClasses = [];
-  const mainClass = buildClass(className, schema, enumDefs, extraClasses);
-
-  const parts = [
-    '// GENERATED — do not edit by hand. Run: node shared-models/generate.js',
-    '// ignore_for_file: lines_longer_than_80_chars, public_member_api_docs',
-    '',
-    ...enumDefs,
-    ...(enumDefs.length ? [''] : []),
-    ...extraClasses,
-    ...(extraClasses.length ? [''] : []),
-    mainClass,
-    '',
-  ];
-
-  return parts.join('\n');
+// ── Main ──────────────────────────────────────────────────────────────────────
+if (!fs.existsSync(DART_OUT_DIR)) {
+  fs.mkdirSync(DART_OUT_DIR, { recursive: true });
 }
 
-fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+const schemaFiles = fs
+  .readdirSync(SCHEMAS_DIR)
+  .filter((f) => f.endsWith('.json'))
+  .sort();
 
 const exported = [];
-for (const schemaFile of SCHEMA_FILES) {
-  const schema = JSON.parse(fs.readFileSync(path.join(SCHEMAS_DIR, schemaFile), 'utf8'));
-  const code = generateDartFile(schema);
-  const outPath = path.join(OUTPUT_DIR, `${schema.$id}.dart`);
-  fs.writeFileSync(outPath, code);
+for (const file of schemaFiles) {
+  const schema = JSON.parse(fs.readFileSync(path.join(SCHEMAS_DIR, file), 'utf8'));
+  const dart = generateDart(schema);
+  const outPath = path.join(DART_OUT_DIR, `${schema.$id}.dart`);
+  fs.writeFileSync(outPath, dart, 'utf8');
+  console.log(`  generated: ${schema.$id}.dart`);
   exported.push(schema.$id);
-  console.log(`generated: desktop-client/lib/models/${schema.$id}.dart`);
 }
 
+// Barrel file
 const barrel = [
   '// GENERATED — do not edit by hand. Run: node shared-models/generate.js',
   ...exported.map((id) => `export '${id}.dart';`),
   '',
 ].join('\n');
-fs.writeFileSync(path.join(OUTPUT_DIR, 'models.dart'), barrel);
-console.log('generated: desktop-client/lib/models/models.dart');
+fs.writeFileSync(path.join(DART_OUT_DIR, 'models.dart'), barrel, 'utf8');
+console.log('  generated: models.dart');
+
+console.log(`\nDone — ${exported.length} Dart model(s) + barrel written to ${DART_OUT_DIR}`);

@@ -1,30 +1,24 @@
 // GENERATED — do not edit by hand. Run: node shared-models/generate.js
 // ignore_for_file: lines_longer_than_80_chars, public_member_api_docs
 
-class User {
-  const User({
-    required this.id,
-    required this.name,
-    required this.email,
-    this.createdAt,
-  });
+import 'package:freezed_annotation/freezed_annotation.dart';
 
-  factory User.fromJson(Map<String, dynamic> json) => User(
-    id: json['id'] as String,
-    name: json['name'] as String,
-    email: json['email'] as String,
-    createdAt: json['created_at'] as int?,
-  );
+part 'user.freezed.dart';
+part 'user.g.dart';
 
-  final String id;
-  final String name;
-  final String email;
-  final int? createdAt;
+@freezed
+abstract class User with _$User {
+  // ignore: invalid_annotation_target
+  @JsonSerializable(fieldRename: FieldRename.snake)
+  const factory User({
+    required String id,
+    required String name,
+    required String email,
+    required int createdAt,
+    required int updatedAt,
+    String? avatarUrl,
+  }) = _User;
 
-  Map<String, dynamic> toJson() => <String, dynamic>{
-      'id': id,
-      'name': name,
-      'email': email,
-      'created_at': createdAt,
-  };
+  factory User.fromJson(Map<String, dynamic> json) =>
+      _$UserFromJson(json);
 }
