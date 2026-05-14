@@ -1,9 +1,12 @@
 // ignore_for_file: public_member_api_docs
 
+import 'dart:async';
+
 import 'package:desktop_client/features/projects/project_repository.dart';
 import 'package:desktop_client/models/project.dart';
 import 'package:desktop_client/models/task.dart';
 import 'package:desktop_client/services/api_client.dart';
+import 'package:desktop_client/services/local_cache_service.dart';
 import 'package:desktop_client/services/ws_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -13,13 +16,40 @@ final projectRepositoryProvider = Provider<ProjectRepository>(
 
 class ProjectsNotifier extends AsyncNotifier<List<Project>> {
   @override
-  Future<List<Project>> build() {
-    return ref.read(projectRepositoryProvider).listProjects();
+  Future<List<Project>> build() async {
+    final cache = ref.read(localCacheServiceProvider);
+    final cached = await cache.getProjects();
+
+    if (cached.isNotEmpty) {
+      // Return cache immediately; refresh from API in background.
+      unawaited(_refreshProjectsFromApi());
+      return cached;
+    }
+
+    // First launch or empty cache: fetch from API.
+    return _fetchAndCacheProjects();
+  }
+
+  Future<List<Project>> _fetchAndCacheProjects() async {
+    final data = await ref.read(projectRepositoryProvider).listProjects();
+    await ref.read(localCacheServiceProvider).saveProjects(data);
+    return data;
+  }
+
+  Future<void> _refreshProjectsFromApi() async {
+    try {
+      final data = await ref.read(projectRepositoryProvider).listProjects();
+      await ref.read(localCacheServiceProvider).saveProjects(data);
+      state = AsyncData(data);
+    } catch (_) {
+      // Keep cached state on network error.
+    }
   }
 
   Future<Project> create(String name) async {
     final project =
         await ref.read(projectRepositoryProvider).createProject(name);
+    await ref.read(localCacheServiceProvider).saveProject(project);
     state = AsyncData([project, ...state.valueOrNull ?? const []]);
     return project;
   }
@@ -32,6 +62,7 @@ class ProjectsNotifier extends AsyncNotifier<List<Project>> {
     final project = await ref
         .read(projectRepositoryProvider)
         .updateProject(projectId, name: name, description: description);
+    await ref.read(localCacheServiceProvider).saveProject(project);
     state = AsyncData(
       (state.valueOrNull ?? [])
           .map((p) => p.id == projectId ? project : p)
@@ -55,20 +86,44 @@ final membersProvider =
 class TasksNotifier extends FamilyAsyncNotifier<List<Task>, String> {
   @override
   Future<List<Task>> build(String arg) async {
-    final data = await ref.read(apiClientProvider).getTasks(arg);
-    final tasks =
-        data.cast<Map<String, dynamic>>().map(Task.fromJson).toList();
-
-    // Subscribe to real-time WS events; apply LWW merge for incoming updates.
-    final sub =
-        ref.read(wsClientProvider).events.listen(_handleWsEvent);
+    // Subscribe to real-time WS events before returning.
+    final sub = ref.read(wsClientProvider).events.listen(_handleWsEvent);
     ref.onDispose(sub.cancel);
 
+    final cache = ref.read(localCacheServiceProvider);
+    final cached = await cache.getTasksForProject(arg);
+
+    if (cached.isNotEmpty) {
+      // Return cache immediately; refresh from API in background.
+      unawaited(_refreshTasksFromApi(arg));
+      return cached;
+    }
+
+    return _fetchAndCacheTasks(arg);
+  }
+
+  Future<List<Task>> _fetchAndCacheTasks(String projectId) async {
+    final data = await ref.read(apiClientProvider).getTasks(projectId);
+    final tasks = data.cast<Map<String, dynamic>>().map(Task.fromJson).toList();
+    await ref.read(localCacheServiceProvider).saveTasks(tasks);
     return tasks;
+  }
+
+  Future<void> _refreshTasksFromApi(String projectId) async {
+    try {
+      final data = await ref.read(apiClientProvider).getTasks(projectId);
+      final tasks =
+          data.cast<Map<String, dynamic>>().map(Task.fromJson).toList();
+      await ref.read(localCacheServiceProvider).saveTasks(tasks);
+      state = AsyncData(tasks);
+    } catch (_) {
+      // Keep cached state on network error.
+    }
   }
 
   void _handleWsEvent(Map<String, dynamic> event) {
     final type = event['type'] as String?;
+    final cache = ref.read(localCacheServiceProvider);
     switch (type) {
       case 'task_created':
         final raw = event['task'];
@@ -78,6 +133,7 @@ class TasksNotifier extends FamilyAsyncNotifier<List<Task>, String> {
           final current = state.valueOrNull ?? [];
           if (current.any((t) => t.id == task.id)) return;
           state = AsyncData([...current, task]);
+          unawaited(cache.saveTask(task));
         }
 
       case 'task_updated':
@@ -85,7 +141,8 @@ class TasksNotifier extends FamilyAsyncNotifier<List<Task>, String> {
         if (raw is Map<String, dynamic>) {
           final task = Task.fromJson(raw);
           if (task.projectId != arg) return;
-          _replaceLww(task);
+          final winner = _replaceLww(task);
+          unawaited(cache.saveTask(winner));
         }
 
       case 'task_deleted':
@@ -94,6 +151,7 @@ class TasksNotifier extends FamilyAsyncNotifier<List<Task>, String> {
         final current = state.valueOrNull;
         if (current == null) return;
         state = AsyncData(current.where((t) => t.id != taskId).toList());
+        unawaited(cache.removeTask(taskId));
     }
   }
 
@@ -107,7 +165,8 @@ class TasksNotifier extends FamilyAsyncNotifier<List<Task>, String> {
         status: 'taken',
         updatedAt: currentTask?.updatedAt,
       );
-      _replaceLww(Task.fromJson(data));
+      final winner = _replaceLww(Task.fromJson(data));
+      await ref.read(localCacheServiceProvider).saveTask(winner);
     } on ApiException catch (e) {
       _handleConflict(e);
       rethrow;
@@ -123,7 +182,8 @@ class TasksNotifier extends FamilyAsyncNotifier<List<Task>, String> {
         status: 'done',
         updatedAt: currentTask?.updatedAt,
       );
-      _replaceLww(Task.fromJson(data));
+      final winner = _replaceLww(Task.fromJson(data));
+      await ref.read(localCacheServiceProvider).saveTask(winner);
     } on ApiException catch (e) {
       _handleConflict(e);
       rethrow;
@@ -142,6 +202,7 @@ class TasksNotifier extends FamilyAsyncNotifier<List<Task>, String> {
       assigneeId: assigneeId,
     );
     final task = Task.fromJson(data);
+    await ref.read(localCacheServiceProvider).saveTask(task);
     state = AsyncData([...state.valueOrNull ?? [], task]);
   }
 
@@ -171,7 +232,8 @@ class TasksNotifier extends FamilyAsyncNotifier<List<Task>, String> {
         clearAssignee: clearAssignee,
         updatedAt: currentTask?.updatedAt,
       );
-      _replaceLww(Task.fromJson(data));
+      final winner = _replaceLww(Task.fromJson(data));
+      await ref.read(localCacheServiceProvider).saveTask(winner);
     } on ApiException catch (e) {
       _handleConflict(e);
       rethrow;
@@ -183,6 +245,7 @@ class TasksNotifier extends FamilyAsyncNotifier<List<Task>, String> {
       projectId: arg,
       taskId: taskId,
     );
+    await ref.read(localCacheServiceProvider).removeTask(taskId);
     final current = state.valueOrNull;
     if (current != null) {
       state = AsyncData(current.where((t) => t.id != taskId).toList());
@@ -193,15 +256,18 @@ class TasksNotifier extends FamilyAsyncNotifier<List<Task>, String> {
       state.valueOrNull?.where((t) => t.id == taskId).firstOrNull;
 
   // LWW merge: only apply incoming update if it is at least as recent as local.
-  void _replaceLww(Task updated) {
+  // Returns the winning task (for cache persistence).
+  Task _replaceLww(Task updated) {
     final current = state.valueOrNull;
-    if (current == null) return;
+    if (current == null) return updated;
+    var winner = updated;
     state = AsyncData(
       current.map((t) {
         if (t.id != updated.id) return t;
-        return updated.updatedAt >= t.updatedAt ? updated : t;
+        return winner = updated.updatedAt >= t.updatedAt ? updated : t;
       }).toList(),
     );
+    return winner;
   }
 
   // On 409: server has a newer version — apply it (LWW: server wins).
@@ -210,13 +276,13 @@ class TasksNotifier extends FamilyAsyncNotifier<List<Task>, String> {
     final raw = e.body?['current'];
     if (raw is Map<String, dynamic>) {
       try {
-        _replaceLww(Task.fromJson(raw));
+        final winner = _replaceLww(Task.fromJson(raw));
+        unawaited(ref.read(localCacheServiceProvider).saveTask(winner));
       } catch (_) {
         // malformed payload — discard; WS broadcast will reconcile
       }
     }
   }
-
 }
 
 final tasksProvider =
