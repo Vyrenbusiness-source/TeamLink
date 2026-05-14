@@ -90,13 +90,64 @@ router.post('/', requireUser, (req, res) => {
   const db = getDb();
   const id = crypto.randomUUID();
 
-  db.prepare('INSERT INTO projects (id, name) VALUES (?, ?)').run(id, name);
+  db.prepare('INSERT INTO projects (id, name, owner_id) VALUES (?, ?, ?)').run(id, name, req.userId);
   db.prepare(
     'INSERT INTO users_projects (user_id, project_id, role) VALUES (?, ?, ?)',
   ).run(req.userId, id, 'lead');
 
   const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(id);
   return res.status(201).json(project);
+});
+
+router.get('/:projectId', requireUser, requireMembership, (req, res) => {
+  const db = getDb();
+  const project = db
+    .prepare(
+      `SELECT p.*, up.role AS my_role
+       FROM projects p
+       JOIN users_projects up ON up.project_id = p.id
+       WHERE p.id = ? AND up.user_id = ?`,
+    )
+    .get(req.params.projectId, req.userId);
+  if (!project) return res.status(404).json({ error: 'project not found' });
+  return res.json(project);
+});
+
+router.patch('/:projectId', requireUser, requireLead, (req, res) => {
+  const { name, description } = req.body;
+  if (name === undefined && description === undefined) {
+    return res.status(400).json({ error: 'name or description required' });
+  }
+
+  const db = getDb();
+  const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.projectId);
+  if (!project) return res.status(404).json({ error: 'project not found' });
+
+  db.prepare(
+    `UPDATE projects SET name = ?, description = ?, updated_at = unixepoch() * 1000 WHERE id = ?`,
+  ).run(
+    name ?? project.name,
+    description !== undefined ? description : project.description,
+    req.params.projectId,
+  );
+
+  const updated = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.projectId);
+  return res.json(updated);
+});
+
+router.delete('/:projectId', requireUser, requireLead, (req, res) => {
+  const db = getDb();
+  const project = db.prepare('SELECT id FROM projects WHERE id = ?').get(req.params.projectId);
+  if (!project) return res.status(404).json({ error: 'project not found' });
+
+  db.transaction(() => {
+    db.prepare('DELETE FROM tasks WHERE project_id = ?').run(req.params.projectId);
+    db.prepare('DELETE FROM notes WHERE project_id = ?').run(req.params.projectId);
+    db.prepare('DELETE FROM users_projects WHERE project_id = ?').run(req.params.projectId);
+    db.prepare('DELETE FROM projects WHERE id = ?').run(req.params.projectId);
+  })();
+
+  return res.status(204).end();
 });
 
 router.get('/:projectId/tasks', requireUser, requireMembership, (req, res) => {
