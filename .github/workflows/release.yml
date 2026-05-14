@@ -1,0 +1,450 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # ── Extract semver from tag ─────────────────────────────────────────────────
+  version:
+    name: Extract version
+    runs-on: ubuntu-latest
+    outputs:
+      semver: ${{ steps.ver.outputs.semver }}
+      build_number: ${{ github.run_number }}
+    steps:
+      - id: ver
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          SEMVER="${TAG#v}"
+          # Validate semver format
+          if ! echo "$SEMVER" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Tag '$TAG' is not a valid semver (expected vMAJOR.MINOR.PATCH)"
+            exit 1
+          fi
+          echo "semver=$SEMVER" >> "$GITHUB_OUTPUT"
+          echo "Building version: $SEMVER (build #${{ github.run_number }})"
+
+  # ── Windows: MSIX signed with PFX ──────────────────────────────────────────
+  build-windows:
+    name: Build Windows MSIX
+    runs-on: windows-latest
+    needs: version
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: pub get
+        run: flutter pub get
+        working-directory: desktop-client
+
+      - name: code generation (build_runner)
+        run: dart run build_runner build --delete-conflicting-outputs
+        working-directory: desktop-client
+
+      - name: build Windows release
+        run: |
+          flutter build windows --release `
+            --build-name="${{ needs.version.outputs.semver }}" `
+            --build-number="${{ needs.version.outputs.build_number }}"
+        working-directory: desktop-client
+
+      - name: decode PFX certificate
+        if: ${{ secrets.WINDOWS_CERTIFICATE != '' }}
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+        run: |
+          $bytes = [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE)
+          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\cert.pfx", $bytes)
+        shell: pwsh
+
+      - name: package MSIX (signed)
+        if: ${{ secrets.WINDOWS_CERTIFICATE != '' }}
+        env:
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $semver = "${{ needs.version.outputs.semver }}"
+          $build  = [int]"${{ needs.version.outputs.build_number }}" % 65535
+          $msixVer = "$semver.$build"
+          dart run msix:create `
+            --msix-version "$msixVer" `
+            --certificate-path "$env:RUNNER_TEMP\cert.pfx" `
+            --certificate-password "$env:WINDOWS_CERTIFICATE_PASSWORD"
+        working-directory: desktop-client
+        shell: pwsh
+
+      - name: package MSIX (unsigned fallback)
+        if: ${{ secrets.WINDOWS_CERTIFICATE == '' }}
+        run: |
+          $semver = "${{ needs.version.outputs.semver }}"
+          $build  = [int]"${{ needs.version.outputs.build_number }}" % 65535
+          $msixVer = "$semver.$build"
+          dart run msix:create --msix-version "$msixVer"
+        working-directory: desktop-client
+        shell: pwsh
+
+      - name: rename MSIX artifact
+        run: |
+          $src  = Get-ChildItem "desktop-client/build/windows/x64/runner/Release/*.msix" |
+                  Select-Object -First 1
+          $dest = "TeamLink-${{ needs.version.outputs.semver }}-windows-x64.msix"
+          Copy-Item $src.FullName -Destination $dest
+        shell: pwsh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-msix
+          path: TeamLink-${{ needs.version.outputs.semver }}-windows-x64.msix
+          if-no-files-found: error
+          retention-days: 30
+
+  # ── macOS: DMG signed + notarized ──────────────────────────────────────────
+  build-macos:
+    name: Build macOS DMG
+    runs-on: macos-latest
+    needs: version
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: import Apple Developer certificate
+        if: ${{ secrets.APPLE_CERTIFICATE != '' }}
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain"
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$RUNNER_TEMP/cert.p12" \
+            -k "$KEYCHAIN_PATH" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/productsign
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list \
+            -S apple-tool:,apple: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+      - name: pub get
+        run: flutter pub get
+        working-directory: desktop-client
+
+      - name: code generation (build_runner)
+        run: dart run build_runner build --delete-conflicting-outputs
+        working-directory: desktop-client
+
+      - name: build macOS release
+        run: |
+          flutter build macos --release \
+            --build-name="${{ needs.version.outputs.semver }}" \
+            --build-number="${{ needs.version.outputs.build_number }}"
+        working-directory: desktop-client
+
+      - name: codesign .app bundle
+        if: ${{ secrets.APPLE_CERTIFICATE != '' }}
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          APP="desktop-client/build/macos/Build/Products/Release/desktop_client.app"
+
+          # Ensure Release.entitlements exists (Flutter default)
+          ENTITLEMENTS="desktop-client/macos/Runner/Release.entitlements"
+          if [ ! -f "$ENTITLEMENTS" ]; then
+            cat > "$ENTITLEMENTS" << 'ENTF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.app-sandbox</key>
+  <true/>
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.network.client</key>
+  <true/>
+</dict>
+</plist>
+ENTF
+          fi
+
+          # Sign frameworks and dylibs first (leaf nodes)
+          find "$APP" \( -name "*.framework" -o -name "*.dylib" \) | while IFS= read -r item; do
+            codesign --force --sign "$APPLE_SIGNING_IDENTITY" \
+              --options runtime --timestamp "$item"
+          done
+
+          # Sign the .app bundle
+          codesign --force --deep \
+            --sign "$APPLE_SIGNING_IDENTITY" \
+            --options runtime \
+            --entitlements "$ENTITLEMENTS" \
+            --timestamp \
+            "$APP"
+
+          codesign --verify --deep --strict "$APP"
+          echo "Codesign verification passed"
+
+      - name: install create-dmg
+        run: brew install create-dmg
+
+      - name: create DMG
+        run: |
+          APP="desktop-client/build/macos/Build/Products/Release/desktop_client.app"
+          DMG="TeamLink-${{ needs.version.outputs.semver }}-macos-universal.dmg"
+
+          create-dmg \
+            --volname "TeamLink ${{ needs.version.outputs.semver }}" \
+            --window-pos 200 120 \
+            --window-size 800 400 \
+            --icon-size 100 \
+            --icon "desktop_client.app" 200 190 \
+            --hide-extension "desktop_client.app" \
+            --app-drop-link 600 190 \
+            "$DMG" \
+            "$APP"
+
+      - name: sign DMG
+        if: ${{ secrets.APPLE_CERTIFICATE != '' }}
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          DMG="TeamLink-${{ needs.version.outputs.semver }}-macos-universal.dmg"
+          codesign --force --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$DMG"
+
+      - name: notarize + staple DMG
+        if: ${{ secrets.APPLE_ID != '' }}
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          DMG="TeamLink-${{ needs.version.outputs.semver }}-macos-universal.dmg"
+          xcrun notarytool submit "$DMG" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --wait
+          xcrun stapler staple "$DMG"
+          xcrun stapler validate "$DMG"
+          echo "Notarization + staple complete"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: TeamLink-${{ needs.version.outputs.semver }}-macos-universal.dmg
+          if-no-files-found: error
+          retention-days: 30
+
+  # ── Linux: AppImage (+ optional GPG signature) ──────────────────────────────
+  build-linux:
+    name: Build Linux AppImage
+    runs-on: ubuntu-latest
+    needs: version
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install linux build dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            clang cmake ninja-build pkg-config \
+            libgtk-3-dev liblzma-dev \
+            fuse libfuse2
+          sudo apt-get install -y "libstdc++-$(gcc -dumpversion | cut -d. -f1)-dev"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: pub get
+        run: flutter pub get
+        working-directory: desktop-client
+
+      - name: code generation (build_runner)
+        run: dart run build_runner build --delete-conflicting-outputs
+        working-directory: desktop-client
+
+      - name: build Linux release
+        run: |
+          flutter build linux --release \
+            --build-name="${{ needs.version.outputs.semver }}" \
+            --build-number="${{ needs.version.outputs.build_number }}"
+        working-directory: desktop-client
+
+      - name: download appimagetool
+        run: |
+          sudo wget -q \
+            "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" \
+            -O /usr/local/bin/appimagetool
+          sudo chmod +x /usr/local/bin/appimagetool
+
+      - name: package AppImage
+        run: |
+          BUILD="desktop-client/build/linux/x64/release/bundle"
+          APPDIR="$RUNNER_TEMP/TeamLink.AppDir"
+          SEMVER="${{ needs.version.outputs.semver }}"
+
+          mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/lib" \
+                   "$APPDIR/usr/share/icons/hicolor/256x256/apps"
+
+          # Copy flutter bundle (binary + lib/ + data/)
+          cp -r "$BUILD/." "$APPDIR/usr/"
+
+          # AppRun launcher
+          cat > "$APPDIR/AppRun" << 'APPRUN'
+#!/bin/bash
+HERE="$(dirname "$(readlink -f "${0}")")"
+export LD_LIBRARY_PATH="$HERE/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+exec "$HERE/usr/desktop_client" "$@"
+APPRUN
+          chmod +x "$APPDIR/AppRun"
+
+          # .desktop entry
+          cat > "$APPDIR/teamlink.desktop" << 'DESKTOP'
+[Desktop Entry]
+Name=TeamLink
+Comment=Team collaboration tool
+Exec=desktop_client
+Icon=teamlink
+Type=Application
+Categories=Office;ProjectManagement;
+StartupWMClass=desktop_client
+DESKTOP
+
+          # Icon: use project asset if available, else 1×1 transparent PNG
+          ICON_SRC="desktop-client/assets/icons/icon.png"
+          if [ -f "$ICON_SRC" ]; then
+            cp "$ICON_SRC" "$APPDIR/teamlink.png"
+            cp "$ICON_SRC" "$APPDIR/usr/share/icons/hicolor/256x256/apps/teamlink.png"
+          else
+            printf '\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82' \
+              > "$APPDIR/teamlink.png"
+            cp "$APPDIR/teamlink.png" \
+               "$APPDIR/usr/share/icons/hicolor/256x256/apps/teamlink.png"
+          fi
+
+          APPIMAGE="TeamLink-${SEMVER}-linux-x86_64.AppImage"
+          ARCH=x86_64 appimagetool "$APPDIR" "$APPIMAGE"
+          echo "APPIMAGE=$APPIMAGE" >> "$GITHUB_ENV"
+
+      - name: GPG-sign AppImage
+        if: ${{ secrets.GPG_PRIVATE_KEY != '' }}
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+          gpg --batch --yes --passphrase "$GPG_PASSPHRASE" \
+            --detach-sign --armor "$APPIMAGE"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage
+          path: |
+            TeamLink-${{ needs.version.outputs.semver }}-linux-x86_64.AppImage
+            TeamLink-${{ needs.version.outputs.semver }}-linux-x86_64.AppImage.asc
+          if-no-files-found: warn
+          retention-days: 30
+
+  # ── GitHub Release ───────────────────────────────────────────────────────────
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [version, build-windows, build-macos, build-linux]
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+
+      - name: generate changelog
+        id: changelog
+        run: |
+          PREV_TAG=$(git tag --sort=-version:refname \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+            | sed -n '2p')
+          if [ -n "$PREV_TAG" ]; then
+            LOG=$(git log --oneline "${PREV_TAG}..HEAD" --no-merges | head -50)
+          else
+            LOG=$(git log --oneline -20 --no-merges)
+          fi
+          {
+            echo "changelog<<EOF"
+            echo "$LOG"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: list dist artifacts
+        run: find dist/ -type f | sort
+
+      - name: create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ needs.version.outputs.semver }}"
+          BUILD="${{ needs.version.outputs.build_number }}"
+
+          # Collect all release files (GPG .asc optional)
+          FILES=()
+          for f in \
+            "dist/windows-msix/TeamLink-${VERSION}-windows-x64.msix" \
+            "dist/macos-dmg/TeamLink-${VERSION}-macos-universal.dmg" \
+            "dist/linux-appimage/TeamLink-${VERSION}-linux-x86_64.AppImage" \
+            "dist/linux-appimage/TeamLink-${VERSION}-linux-x86_64.AppImage.asc"
+          do
+            [ -f "$f" ] && FILES+=("$f")
+          done
+
+          NOTES_FILE="$RUNNER_TEMP/release-notes.md"
+          cat > "$NOTES_FILE" << ENDNOTES
+## What's Changed
+
+${{ steps.changelog.outputs.changelog }}
+
+## Downloads
+
+| Platform | File | Signing |
+|----------|------|---------|
+| Windows 10/11 | \`TeamLink-${VERSION}-windows-x64.msix\` | PFX codesign |
+| macOS 12+ | \`TeamLink-${VERSION}-macos-universal.dmg\` | Developer ID + Notarization |
+| Linux x86_64 | \`TeamLink-${VERSION}-linux-x86_64.AppImage\` | GPG detached signature |
+
+**Build:** \`v${VERSION}\` · Run #${BUILD}
+ENDNOTES
+
+          gh release create "v${VERSION}" \
+            --title "TeamLink ${VERSION}" \
+            --notes-file "$NOTES_FILE" \
+            "${FILES[@]}"
+
+      - name: cleanup keychain (macOS runner does not apply, safety no-op)
+        if: always()
+        run: echo "Release job complete"
