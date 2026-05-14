@@ -7,13 +7,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// Thrown when the server returns an HTTP error response.
 class ApiException implements Exception {
   /// Creates an [ApiException].
-  const ApiException(this.statusCode, this.message);
+  const ApiException(this.statusCode, this.message, {this.body});
 
   /// HTTP status code returned by the server.
   final int statusCode;
 
   /// Human-readable error message from the server.
   final String message;
+
+  /// Parsed response body, present for conflict (409) responses containing
+  /// a `current` field with the server's authoritative object.
+  final Map<String, dynamic>? body;
 
   /// User-facing message. Strips the `ApiException(…):` prefix so UI code
   /// can use `e.toString()` directly without leaking the class name.
@@ -89,15 +93,17 @@ class ApiClient {
     final raw = await res.transform(utf8.decoder).join();
     if (res.statusCode >= 400) {
       var msg = 'request failed';
+      Map<String, dynamic>? errorBody;
       try {
         final decoded = jsonDecode(raw);
         if (decoded is Map<String, dynamic>) {
+          errorBody = decoded;
           msg = decoded['error'] as String? ?? msg;
         }
       } on FormatException {
         // keep default message
       }
-      throw ApiException(res.statusCode, msg);
+      throw ApiException(res.statusCode, msg, body: errorBody);
     }
     if (raw.isEmpty) return null;
     return jsonDecode(raw);
@@ -283,6 +289,7 @@ class ApiClient {
     String? assigneeId,
     bool clearAssignee = false,
     String? status,
+    int? updatedAt,
   }) async =>
       (await _patch('/projects/$projectId/tasks/$taskId', {
         if (title != null) 'title': title,
@@ -290,6 +297,7 @@ class ApiClient {
         if (clearAssignee) 'assignee_id': null,
         if (!clearAssignee && assigneeId != null) 'assignee_id': assigneeId,
         if (status != null) 'status': status,
+        if (updatedAt != null) 'updated_at': updatedAt,
       })) as Map<String, dynamic>;
 
   Future<void> deleteTask({

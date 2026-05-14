@@ -4,6 +4,7 @@ import 'package:desktop_client/features/projects/project_repository.dart';
 import 'package:desktop_client/models/project.dart';
 import 'package:desktop_client/models/task.dart';
 import 'package:desktop_client/services/api_client.dart';
+import 'package:desktop_client/services/ws_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 final projectRepositoryProvider = Provider<ProjectRepository>(
@@ -39,26 +40,78 @@ class TasksNotifier extends FamilyAsyncNotifier<List<Task>, String> {
   @override
   Future<List<Task>> build(String arg) async {
     final data = await ref.read(apiClientProvider).getTasks(arg);
-    return data.cast<Map<String, dynamic>>().map(Task.fromJson).toList();
+    final tasks =
+        data.cast<Map<String, dynamic>>().map(Task.fromJson).toList();
+
+    // Subscribe to real-time WS events; apply LWW merge for incoming updates.
+    final sub =
+        ref.read(wsClientProvider).events.listen(_handleWsEvent);
+    ref.onDispose(sub.cancel);
+
+    return tasks;
+  }
+
+  void _handleWsEvent(Map<String, dynamic> event) {
+    final type = event['type'] as String?;
+    switch (type) {
+      case 'task_created':
+        final raw = event['task'];
+        if (raw is Map<String, dynamic>) {
+          final task = Task.fromJson(raw);
+          if (task.projectId != arg) return;
+          final current = state.valueOrNull ?? [];
+          if (current.any((t) => t.id == task.id)) return;
+          state = AsyncData([...current, task]);
+        }
+
+      case 'task_updated':
+        final raw = event['task'];
+        if (raw is Map<String, dynamic>) {
+          final task = Task.fromJson(raw);
+          if (task.projectId != arg) return;
+          _replaceLww(task);
+        }
+
+      case 'task_deleted':
+        final taskId = event['taskId'] as String?;
+        if (taskId == null) return;
+        final current = state.valueOrNull;
+        if (current == null) return;
+        state = AsyncData(current.where((t) => t.id != taskId).toList());
+    }
   }
 
   Future<void> takeTask(String taskId, String userId) async {
-    final data = await ref.read(apiClientProvider).updateTask(
-      projectId: arg,
-      taskId: taskId,
-      assigneeId: userId,
-      status: 'taken',
-    );
-    _replace(Task.fromJson(data));
+    final currentTask = _findById(taskId);
+    try {
+      final data = await ref.read(apiClientProvider).updateTask(
+        projectId: arg,
+        taskId: taskId,
+        assigneeId: userId,
+        status: 'taken',
+        updatedAt: currentTask?.updatedAt,
+      );
+      _replaceLww(Task.fromJson(data));
+    } on ApiException catch (e) {
+      _handleConflict(e);
+      rethrow;
+    }
   }
 
   Future<void> markDone(String taskId) async {
-    final data = await ref.read(apiClientProvider).updateTask(
-      projectId: arg,
-      taskId: taskId,
-      status: 'done',
-    );
-    _replace(Task.fromJson(data));
+    final currentTask = _findById(taskId);
+    try {
+      final data = await ref.read(apiClientProvider).updateTask(
+        projectId: arg,
+        taskId: taskId,
+        status: 'done',
+        updatedAt: currentTask?.updatedAt,
+      );
+      _replaceLww(Task.fromJson(data));
+    } on ApiException catch (e) {
+      _handleConflict(e);
+      rethrow;
+    }
   }
 
   Future<void> create({
@@ -76,14 +129,34 @@ class TasksNotifier extends FamilyAsyncNotifier<List<Task>, String> {
     state = AsyncData([...state.valueOrNull ?? [], task]);
   }
 
-  void _replace(Task updated) {
+  Task? _findById(String taskId) =>
+      state.valueOrNull?.where((t) => t.id == taskId).firstOrNull;
+
+  // LWW merge: only apply incoming update if it is at least as recent as local.
+  void _replaceLww(Task updated) {
+    final current = state.valueOrNull;
+    if (current == null) return;
     state = AsyncData(
-      state.valueOrNull
-              ?.map((t) => t.id == updated.id ? updated : t)
-              .toList() ??
-          [],
+      current.map((t) {
+        if (t.id != updated.id) return t;
+        return updated.updatedAt >= t.updatedAt ? updated : t;
+      }).toList(),
     );
   }
+
+  // On 409: server has a newer version — apply it (LWW: server wins).
+  void _handleConflict(ApiException e) {
+    if (e.statusCode != 409) return;
+    final raw = e.body?['current'];
+    if (raw is Map<String, dynamic>) {
+      try {
+        _replaceLww(Task.fromJson(raw));
+      } catch (_) {
+        // malformed payload — discard; WS broadcast will reconcile
+      }
+    }
+  }
+
 }
 
 final tasksProvider =

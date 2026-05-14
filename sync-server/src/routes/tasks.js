@@ -67,7 +67,7 @@ router.post('/', requireUser, (req, res) => {
 
 // PATCH /tasks/:taskId — Task aktualisieren (status, assignee, description, priority)
 router.patch('/:taskId', requireUser, (req, res) => {
-  const { status, assignee_id, title, description, priority, deadline } = req.body;
+  const { status, assignee_id, title, description, priority, deadline, updated_at: clientUpdatedAt } = req.body;
 
   if (status !== undefined && !VALID_STATUSES.includes(status)) {
     return res.status(400).json({ error: `status must be one of: ${VALID_STATUSES.join(', ')}` });
@@ -84,6 +84,11 @@ router.patch('/:taskId', requireUser, (req, res) => {
     .prepare('SELECT user_id FROM users_projects WHERE user_id = ? AND project_id = ?')
     .get(req.userId, task.project_id);
   if (!membership) return res.status(403).json({ error: 'not a project member' });
+
+  // LWW: reject stale writes — client must have seen the current version
+  if (clientUpdatedAt !== undefined && task.updated_at > clientUpdatedAt) {
+    return res.status(409).json({ error: 'conflict', current: task });
+  }
 
   if (assignee_id) {
     const assigneeMember = db

@@ -6,6 +6,7 @@ const {
   requireMembership,
   requireLead,
 } = require('../middleware/auth');
+const { broadcastToProject } = require('../utils/broadcast');
 
 const router = express.Router();
 
@@ -114,7 +115,7 @@ router.get('/:projectId', requireUser, requireMembership, (req, res) => {
 });
 
 router.patch('/:projectId', requireUser, requireLead, (req, res) => {
-  const { name, description } = req.body;
+  const { name, description, updated_at: clientUpdatedAt } = req.body;
   if (name === undefined && description === undefined) {
     return res.status(400).json({ error: 'name or description required' });
   }
@@ -122,6 +123,11 @@ router.patch('/:projectId', requireUser, requireLead, (req, res) => {
   const db = getDb();
   const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.projectId);
   if (!project) return res.status(404).json({ error: 'project not found' });
+
+  // LWW: reject stale writes
+  if (clientUpdatedAt !== undefined && project.updated_at > clientUpdatedAt) {
+    return res.status(409).json({ error: 'conflict', current: project });
+  }
 
   db.prepare(
     `UPDATE projects SET name = ?, description = ?, updated_at = unixepoch() * 1000 WHERE id = ?`,
@@ -212,7 +218,7 @@ router.post('/:projectId/tasks', requireUser, requireMembership, (req, res) => {
 });
 
 router.patch('/:projectId/tasks/:taskId', requireUser, requireMembership, (req, res) => {
-  const { title, deadline, assignee_id, status } = req.body;
+  const { title, deadline, assignee_id, status, updated_at: clientUpdatedAt } = req.body;
 
   const db = getDb();
   const task = db
@@ -222,6 +228,11 @@ router.patch('/:projectId/tasks/:taskId', requireUser, requireMembership, (req, 
 
   if (status && !VALID_STATUSES.includes(status)) {
     return res.status(400).json({ error: `status must be one of: ${VALID_STATUSES.join(', ')}` });
+  }
+
+  // LWW: reject stale writes — client must have seen the current version
+  if (clientUpdatedAt !== undefined && task.updated_at > clientUpdatedAt) {
+    return res.status(409).json({ error: 'conflict', current: task });
   }
 
   if (assignee_id) {
@@ -244,10 +255,12 @@ router.patch('/:projectId/tasks/:taskId', requireUser, requireMembership, (req, 
 
   db.prepare(
     `UPDATE tasks SET title = ?, deadline = ?, assignee_id = ?, status = ?,
-     updated_at = unixepoch() WHERE id = ?`,
+     updated_at = unixepoch() * 1000 WHERE id = ?`,
   ).run(newTitle, newDeadline, newAssignee, newStatus, req.params.taskId);
 
   const updated = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.taskId);
+
+  broadcastToProject(req.app.get('wss'), req.params.projectId, { type: 'task_updated', task: updated });
 
   const assigneeChanged = assignee_id !== undefined && assignee_id !== task.assignee_id;
   if (assigneeChanged && newAssignee) {
