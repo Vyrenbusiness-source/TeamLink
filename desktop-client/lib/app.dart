@@ -9,6 +9,7 @@ import 'package:desktop_client/l10n/app_locale.dart';
 import 'package:desktop_client/models/user.dart';
 import 'package:desktop_client/providers/auth_provider.dart';
 import 'package:desktop_client/shared/app_shell.dart';
+import 'package:desktop_client/shared/app_theme.dart';
 import 'package:desktop_client/shared/theme_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -141,17 +142,8 @@ class TeamLinkApp extends ConsumerWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2563EB)),
-        useMaterial3: true,
-      ),
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF2563EB),
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-      ),
+      theme: AppTheme.light(),
+      darkTheme: AppTheme.dark(),
       debugShowCheckedModeBanner: false,
     );
   }
