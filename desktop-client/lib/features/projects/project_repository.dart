@@ -60,6 +60,19 @@ class ProjectRepository {
     );
   }
 
+  Future<Project> updateProject(
+    String projectId, {
+    String? name,
+    String? description,
+  }) async {
+    final data = await _api.updateProject(
+      projectId,
+      name: name,
+      description: description,
+    );
+    return Project.fromJson(data);
+  }
+
   Future<void> inviteMember(
     String projectId, {
     String? email,

@@ -23,6 +23,22 @@ class ProjectsNotifier extends AsyncNotifier<List<Project>> {
     state = AsyncData([project, ...state.valueOrNull ?? const []]);
     return project;
   }
+
+  Future<Project> updateProject(
+    String projectId, {
+    String? name,
+    String? description,
+  }) async {
+    final project = await ref
+        .read(projectRepositoryProvider)
+        .updateProject(projectId, name: name, description: description);
+    state = AsyncData(
+      (state.valueOrNull ?? [])
+          .map((p) => p.id == projectId ? project : p)
+          .toList(),
+    );
+    return project;
+  }
 }
 
 final projectsProvider =
@@ -127,6 +143,50 @@ class TasksNotifier extends FamilyAsyncNotifier<List<Task>, String> {
     );
     final task = Task.fromJson(data);
     state = AsyncData([...state.valueOrNull ?? [], task]);
+  }
+
+  Future<void> editTask({
+    required String taskId,
+    String? title,
+    String? description,
+    TaskStatus? status,
+    TaskPriority? priority,
+    int? deadline,
+    bool clearDeadline = false,
+    String? assigneeId,
+    bool clearAssignee = false,
+  }) async {
+    final currentTask = _findById(taskId);
+    try {
+      final data = await ref.read(apiClientProvider).updateTask(
+        projectId: arg,
+        taskId: taskId,
+        title: title,
+        description: description,
+        status: status?.name,
+        priority: priority?.name,
+        deadline: deadline,
+        clearDeadline: clearDeadline,
+        assigneeId: assigneeId,
+        clearAssignee: clearAssignee,
+        updatedAt: currentTask?.updatedAt,
+      );
+      _replaceLww(Task.fromJson(data));
+    } on ApiException catch (e) {
+      _handleConflict(e);
+      rethrow;
+    }
+  }
+
+  Future<void> deleteTask(String taskId) async {
+    await ref.read(apiClientProvider).deleteTask(
+      projectId: arg,
+      taskId: taskId,
+    );
+    final current = state.valueOrNull;
+    if (current != null) {
+      state = AsyncData(current.where((t) => t.id != taskId).toList());
+    }
   }
 
   Task? _findById(String taskId) =>

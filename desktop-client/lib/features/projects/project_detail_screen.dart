@@ -2,6 +2,7 @@
 
 import 'dart:async';
 
+import 'package:desktop_client/models/project.dart';
 import 'package:desktop_client/features/projects/notes_provider.dart';
 import 'package:desktop_client/features/projects/project_providers.dart';
 import 'package:desktop_client/features/projects/widgets/create_task_dialog.dart';
@@ -27,12 +28,25 @@ class ProjectDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(appStringsProvider);
+    final project = ref
+        .watch(projectsProvider)
+        .valueOrNull
+        ?.where((p) => p.id == projectId)
+        .firstOrNull;
     return DefaultTabController(
       length: 3,
       child: Scaffold(
         appBar: AppBar(
-          title: Text(projectName),
+          title: Text(project?.name ?? projectName),
           actions: [
+            Consumer(
+              builder: (context, ref, _) => IconButton(
+                onPressed: () =>
+                    _showEditProjectDialog(context, ref, project),
+                icon: const Icon(Icons.edit_outlined),
+                tooltip: s.projectEditTitle,
+              ),
+            ),
             Consumer(
               builder: (context, ref, _) => IconButton(
                 onPressed: () => _showInviteDialog(context, ref),
@@ -73,6 +87,68 @@ class ProjectDetailScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _showEditProjectDialog(
+    BuildContext context,
+    WidgetRef ref,
+    Project? project,
+  ) async {
+    final s = ref.read(appStringsProvider);
+    final nameCtrl =
+        TextEditingController(text: project?.name ?? projectName);
+    final descCtrl =
+        TextEditingController(text: project?.description ?? '');
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(s.projectEditTitle),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameCtrl,
+              decoration: InputDecoration(
+                labelText: s.createProjectNameLabel,
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: descCtrl,
+              decoration: InputDecoration(
+                labelText: s.projectEditDescriptionLabel,
+                border: const OutlineInputBorder(),
+              ),
+              minLines: 2,
+              maxLines: 4,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(s.cancel),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final name = nameCtrl.text.trim();
+              if (name.isEmpty) return;
+              Navigator.pop(ctx);
+              final desc = descCtrl.text.trim();
+              await ref.read(projectsProvider.notifier).updateProject(
+                    projectId,
+                    name: name,
+                    description: desc.isEmpty ? null : desc,
+                  );
+            },
+            child: Text(s.save),
+          ),
+        ],
+      ),
+    );
+    nameCtrl.dispose();
+    descCtrl.dispose();
   }
 
   Future<void> _showCreateTask(BuildContext context) async {

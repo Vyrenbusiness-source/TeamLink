@@ -302,19 +302,35 @@ class ApiClient {
     required String projectId,
     required String taskId,
     String? title,
+    String? description,
     int? deadline,
+    bool clearDeadline = false,
     String? assigneeId,
     bool clearAssignee = false,
     String? status,
+    String? priority,
     int? updatedAt,
   }) async =>
       (await _patch('/projects/$projectId/tasks/$taskId', {
         if (title != null) 'title': title,
-        if (deadline != null) 'deadline': deadline,
+        if (description != null) 'description': description,
+        if (clearDeadline) 'deadline': null,
+        if (!clearDeadline && deadline != null) 'deadline': deadline,
         if (clearAssignee) 'assignee_id': null,
         if (!clearAssignee && assigneeId != null) 'assignee_id': assigneeId,
         if (status != null) 'status': status,
+        if (priority != null) 'priority': priority,
         if (updatedAt != null) 'updated_at': updatedAt,
+      })) as Map<String, dynamic>;
+
+  Future<Map<String, dynamic>> updateProject(
+    String projectId, {
+    String? name,
+    String? description,
+  }) async =>
+      (await _patch('/projects/$projectId', {
+        if (name != null) 'name': name,
+        if (description != null) 'description': description,
       })) as Map<String, dynamic>;
 
   Future<void> deleteTask({

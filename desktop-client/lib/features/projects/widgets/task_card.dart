@@ -7,6 +7,7 @@ import 'package:desktop_client/providers/auth_provider.dart';
 import 'package:desktop_client/shared/task_status_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 class TaskCard extends ConsumerWidget {
   const TaskCard({
@@ -23,7 +24,11 @@ class TaskCard extends ConsumerWidget {
     final s = ref.watch(appStringsProvider);
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      child: Padding(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () =>
+            context.go('/projects/$projectId/tasks/${task.id}'),
+        child: Padding(
         padding: const EdgeInsets.all(12),
         child: Row(
           children: [
@@ -71,6 +76,7 @@ class TaskCard extends ConsumerWidget {
             _ActionButton(task: task, projectId: projectId),
           ],
         ),
+      ),
       ),
     );
   }

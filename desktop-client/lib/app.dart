@@ -4,6 +4,7 @@ import 'package:desktop_client/features/dm/dm_screen.dart';
 import 'package:desktop_client/features/onboarding/onboarding_provider.dart';
 import 'package:desktop_client/features/onboarding/onboarding_screen.dart';
 import 'package:desktop_client/features/projects/project_detail_screen.dart';
+import 'package:desktop_client/features/projects/task_detail_screen.dart';
 import 'package:desktop_client/l10n/app_locale.dart';
 import 'package:desktop_client/models/user.dart';
 import 'package:desktop_client/providers/auth_provider.dart';
@@ -83,6 +84,17 @@ final _routerProvider = Provider<GoRouter>((ref) {
               final id = state.pathParameters['id']!;
               final name = state.extra as String? ?? 'Projekt';
               return ProjectDetailScreen(projectId: id, projectName: name);
+            },
+          ),
+          GoRoute(
+            path: '/projects/:id/tasks/:taskId',
+            builder: (context, state) {
+              final projectId = state.pathParameters['id']!;
+              final taskId = state.pathParameters['taskId']!;
+              return TaskDetailScreen(
+                projectId: projectId,
+                taskId: taskId,
+              );
             },
           ),
           GoRoute(

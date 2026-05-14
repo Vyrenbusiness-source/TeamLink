@@ -185,6 +185,24 @@ abstract class AppStrings {
   String get taskStatusOpen;
   String get taskStatusTaken;
   String get taskStatusDone;
+
+  // Task detail / edit
+  String get taskDetailEditTitle;
+  String get taskDetailDescriptionLabel;
+  String get taskDetailDescriptionHint;
+  String get taskDetailPriorityLabel;
+  String get taskDetailDeleteConfirmTitle;
+  String get taskDetailDeleteConfirmBody;
+
+  // Priority labels
+  String get priorityLow;
+  String get priorityMedium;
+  String get priorityHigh;
+  String get priorityUrgent;
+
+  // Project edit
+  String get projectEditTitle;
+  String get projectEditDescriptionLabel;
 }
 
 class _AppStringsDe extends AppStrings {
@@ -371,6 +389,20 @@ class _AppStringsDe extends AppStrings {
   @override String get taskStatusOpen => 'Offen';
   @override String get taskStatusTaken => 'Übernommen';
   @override String get taskStatusDone => 'Erledigt';
+
+  @override String get taskDetailEditTitle => 'Aufgabe bearbeiten';
+  @override String get taskDetailDescriptionLabel => 'Beschreibung';
+  @override String get taskDetailDescriptionHint => 'Optionale Beschreibung…';
+  @override String get taskDetailPriorityLabel => 'Priorität';
+  @override String get taskDetailDeleteConfirmTitle => 'Aufgabe löschen?';
+  @override String get taskDetailDeleteConfirmBody =>
+      'Diese Aktion kann nicht rückgängig gemacht werden.';
+  @override String get priorityLow => 'Niedrig';
+  @override String get priorityMedium => 'Mittel';
+  @override String get priorityHigh => 'Hoch';
+  @override String get priorityUrgent => 'Dringend';
+  @override String get projectEditTitle => 'Projekt bearbeiten';
+  @override String get projectEditDescriptionLabel => 'Beschreibung (optional)';
 }
 
 class _AppStringsEn extends AppStrings {
@@ -557,6 +589,20 @@ class _AppStringsEn extends AppStrings {
   @override String get taskStatusOpen => 'Open';
   @override String get taskStatusTaken => 'Taken';
   @override String get taskStatusDone => 'Done';
+
+  @override String get taskDetailEditTitle => 'Edit task';
+  @override String get taskDetailDescriptionLabel => 'Description';
+  @override String get taskDetailDescriptionHint => 'Optional description…';
+  @override String get taskDetailPriorityLabel => 'Priority';
+  @override String get taskDetailDeleteConfirmTitle => 'Delete task?';
+  @override String get taskDetailDeleteConfirmBody =>
+      'This action cannot be undone.';
+  @override String get priorityLow => 'Low';
+  @override String get priorityMedium => 'Medium';
+  @override String get priorityHigh => 'High';
+  @override String get priorityUrgent => 'Urgent';
+  @override String get projectEditTitle => 'Edit project';
+  @override String get projectEditDescriptionLabel => 'Description (optional)';
 }
 
 final appStringsProvider = Provider<AppStrings>((ref) {
