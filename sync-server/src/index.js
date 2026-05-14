@@ -4,6 +4,7 @@ const { WebSocketServer } = require('ws');
 const app = require('./app');
 const { initDb } = require('./db/schema');
 const { startTunnel, stopTunnel } = require('./utils/cloudflared');
+const logger = require('./utils/logger');
 
 const PORT = process.env.PORT || 3000;
 const ENABLE_TUNNEL = process.env.ENABLE_TUNNEL !== '0';
@@ -53,7 +54,7 @@ wss.on('connection', (ws) => {
 });
 
 httpServer.listen(PORT, () => {
-  console.log(`TeamLink server running on port ${PORT}`);
+  logger.info({ port: PORT }, 'TeamLink server running');
   if (ENABLE_TUNNEL) {
     startTunnel({ port: PORT });
   }

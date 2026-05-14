@@ -1,10 +1,11 @@
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const logger = require('./logger');
 
 const TRYCLOUDFLARE_URL_RE = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/i;
 
-let state = {
+const state = {
   url: null,
   process: null,
   startedAt: null,
@@ -43,7 +44,7 @@ function startTunnel({ port = 3000 } = {}) {
     state.status = 'error';
     state.lastError = err.message;
     state.process = null;
-    console.error(`[cloudflared] spawn failed: ${err.message}`);
+    logger.error({ err: err.message }, 'cloudflared spawn failed');
     scheduleRestart();
     return state;
   }
@@ -58,7 +59,7 @@ function startTunnel({ port = 3000 } = {}) {
       if (m) {
         state.url = m[0];
         state.status = 'running';
-        console.log(`[cloudflared] tunnel ready: ${state.url}`);
+        logger.info({ url: state.url }, 'cloudflared tunnel ready');
       }
     }
   };
@@ -69,12 +70,12 @@ function startTunnel({ port = 3000 } = {}) {
     state.status = 'error';
     state.lastError = err.message;
     state.process = null; // critical: allow next start attempt
-    console.error(`[cloudflared] process error: ${err.message}`);
+    logger.error({ err: err.message }, 'cloudflared process error');
     scheduleRestart();
   });
 
   proc.on('exit', (code, signal) => {
-    console.warn(`[cloudflared] exited code=${code} signal=${signal}`);
+    logger.warn({ code, signal }, 'cloudflared exited');
     state.process = null;
     state.url = null;
     if (signal === 'SIGTERM' || signal === 'SIGINT') {
@@ -95,7 +96,7 @@ function scheduleRestart() {
   if (!restartConfig || restartTimer) return;
   restartTimer = setTimeout(() => {
     restartTimer = null;
-    console.log('[cloudflared] auto-restart…');
+    logger.info('cloudflared auto-restart');
     startTunnel(restartConfig);
   }, RESTART_DELAY_MS);
 }

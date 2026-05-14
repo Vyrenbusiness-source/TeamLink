@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const express = require('express');
 const cors = require('cors');
 const session = require('express-session');
+const logger = require('./utils/logger');
 
 function resolveSessionSecret() {
   const fromEnv = process.env.SESSION_SECRET;
@@ -97,7 +98,7 @@ app.use((err, _req, res, _next) => {
   if (err && err.message && /not allowed by CORS/i.test(err.message)) {
     return res.status(403).json({ error: 'origin not allowed' });
   }
-  console.error('[express] unhandled error:', err);
+  logger.error({ err }, 'express unhandled error');
   if (res.headersSent) return;
   res.status(500).json({ error: 'internal server error' });
 });
