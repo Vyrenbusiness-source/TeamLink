@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const session = require('express-session');
 const logger = require('./utils/logger');
+const requestLogger = require('./middleware/requestLogger');
 
 function resolveSessionSecret() {
   const fromEnv = process.env.SESSION_SECRET;
@@ -64,6 +65,7 @@ app.use(
 );
 
 app.set('trust proxy', 1);
+app.use(requestLogger);
 app.use(express.json());
 
 const sessionMiddleware = session({
@@ -94,13 +96,45 @@ app.use('/invites', require('./routes/invites'));
 app.use('/host', require('./routes/host'));
 
 // Central error handler — keeps the server up if a route throws.
-app.use((err, _req, res, _next) => {
+app.use((err, req, res, _next) => {
+  if (res.headersSent) return;
+
+  const log = req.log || logger;
+
   if (err && err.message && /not allowed by CORS/i.test(err.message)) {
+    log.warn({ err }, 'cors rejected');
     return res.status(403).json({ error: 'origin not allowed' });
   }
-  logger.error({ err }, 'express unhandled error');
-  if (res.headersSent) return;
-  res.status(500).json({ error: 'internal server error' });
+
+  const name = err && err.name;
+
+  if (name === 'JsonWebTokenError' || name === 'NotBeforeError') {
+    log.warn({ err }, 'jwt invalid');
+    return res.status(401).json({ error: 'invalid token' });
+  }
+
+  if (name === 'TokenExpiredError') {
+    log.warn({ err }, 'jwt expired');
+    return res.status(401).json({ error: 'token expired' });
+  }
+
+  // express-json body-parser parse error
+  if (err.type === 'entity.parse.failed') {
+    log.warn({ err }, 'bad json body');
+    return res.status(400).json({ error: 'invalid json' });
+  }
+
+  const status = (err.status || err.statusCode) >= 400 && (err.status || err.statusCode) < 600
+    ? err.status || err.statusCode
+    : 500;
+
+  if (status >= 500) {
+    log.error({ err }, 'unhandled error');
+  } else {
+    log.warn({ err }, 'client error');
+  }
+
+  res.status(status).json({ error: err.expose ? err.message : 'internal server error' });
 });
 
 app.sessionMiddleware = sessionMiddleware;

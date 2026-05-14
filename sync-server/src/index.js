@@ -71,3 +71,12 @@ function shutdown() {
 }
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
+
+process.on('unhandledRejection', (reason) => {
+  logger.error({ err: reason }, 'unhandledRejection');
+});
+
+process.on('uncaughtException', (err) => {
+  logger.fatal({ err }, 'uncaughtException — server will exit');
+  process.exit(1);
+});
