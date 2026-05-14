@@ -4,6 +4,7 @@ const { WebSocketServer } = require('ws');
 const app = require('./app');
 const { initDb } = require('./db/schema');
 const { startTunnel, stopTunnel } = require('./utils/cloudflared');
+const { verifyAccessToken } = require('./middleware/auth');
 const logger = require('./utils/logger');
 
 const PORT = process.env.PORT || 3000;
@@ -19,8 +20,26 @@ const wss = new WebSocketServer({ noServer: true });
 app.set('wss', wss);
 
 httpServer.on('upgrade', (req, socket, head) => {
-  // Run the same session middleware as on HTTP — this populates req.session
-  // from the signed cookie sent by the browser/Flutter client.
+  // JWT via ?token=<access_token> takes priority; session is fallback for
+  // browser clients that send cookies on the upgrade request.
+  const url = new URL(req.url, `http://localhost`);
+  const queryToken = url.searchParams.get('token');
+
+  if (queryToken) {
+    const userId = verifyAccessToken(queryToken);
+    if (!userId) {
+      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      ws.userId = userId;
+      wss.emit('connection', ws, req);
+    });
+    return;
+  }
+
+  // Session fallback — populates req.session from signed cookie.
   app.sessionMiddleware(req, {}, () => {
     const userId = req.session && req.session.userId;
     if (!userId) {
