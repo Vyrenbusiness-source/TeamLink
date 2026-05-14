@@ -98,6 +98,12 @@ abstract class AppStrings {
   String get overviewColumnEmpty;
   String get overviewDeadlineOverdue;
   String get overviewDeadlineToday;
+  String get overviewListViewTooltip;
+  String get overviewKanbanViewTooltip;
+  String get overviewFilterAll;
+  String get overviewSortDeadline;
+  String get overviewSortNewest;
+  String get overviewSortTitle;
 
   // Project list
   String get projectListTitle;
@@ -282,6 +288,12 @@ class _AppStringsDe extends AppStrings {
   @override String get overviewColumnEmpty => 'Keine';
   @override String get overviewDeadlineOverdue => 'Überfällig';
   @override String get overviewDeadlineToday => 'Heute';
+  @override String get overviewListViewTooltip => 'Listen-Ansicht';
+  @override String get overviewKanbanViewTooltip => 'Kanban-Ansicht';
+  @override String get overviewFilterAll => 'Alle';
+  @override String get overviewSortDeadline => 'Deadline';
+  @override String get overviewSortNewest => 'Neueste';
+  @override String get overviewSortTitle => 'Titel';
 
   @override String get projectListTitle => 'Projekte';
   @override String get projectListNewProject => 'Neues Projekt';
@@ -462,6 +474,12 @@ class _AppStringsEn extends AppStrings {
   @override String get overviewColumnEmpty => 'None';
   @override String get overviewDeadlineOverdue => 'Overdue';
   @override String get overviewDeadlineToday => 'Today';
+  @override String get overviewListViewTooltip => 'List view';
+  @override String get overviewKanbanViewTooltip => 'Kanban view';
+  @override String get overviewFilterAll => 'All';
+  @override String get overviewSortDeadline => 'Deadline';
+  @override String get overviewSortNewest => 'Newest';
+  @override String get overviewSortTitle => 'Title';
 
   @override String get projectListTitle => 'Projects';
   @override String get projectListNewProject => 'New project';
