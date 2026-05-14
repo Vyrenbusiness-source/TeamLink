@@ -10,8 +10,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 class AuthNotifier extends AsyncNotifier<User?> {
   @override
   Future<User?> build() async {
+    final api = ref.read(apiClientProvider);
+    await api.initFromStorage();
     try {
-      final data = await ref.read(apiClientProvider).getMe();
+      final data = await api.getMe();
       return User.fromJson(data);
     } on ApiException catch (e) {
       if (e.statusCode == 401) return null;

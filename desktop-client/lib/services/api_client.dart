@@ -1,7 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:desktop_client/services/server_config.dart';
+import 'package:desktop_client/services/secure_storage_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Thrown when the server returns an HTTP error response.
@@ -50,6 +51,7 @@ class ApiClient {
   static ApiClient get instance => _instance;
 
   final HttpClient _http = HttpClient();
+  final SecureStorageService _storage = SecureStorageService.instance;
   String? _cookie;
   String? _accessToken;
   String _baseUrl = 'http://localhost:3000';
@@ -68,10 +70,17 @@ class ApiClient {
     _baseUrl = url.replaceAll(RegExp(r'/+$'), '');
   }
 
+  /// Restore session from OS keystore. Must be called once before [getMe].
+  Future<void> initFromStorage() async {
+    _cookie = await _storage.readCookie();
+    _accessToken = await _storage.readAccessToken();
+  }
+
   /// Forget the session cookie and access token (used when switching servers).
   void clearSession() {
     _cookie = null;
     _accessToken = null;
+    unawaited(_storage.clearCredentials());
   }
 
   void _saveCookies(HttpClientResponse res) {
@@ -154,6 +163,7 @@ class ApiClient {
         (await _post('/auth/login', {'email': email, 'password': password}))
             as Map<String, dynamic>;
     _accessToken = data['access_token'] as String?;
+    await _persistCredentials();
     return data;
   }
 
@@ -169,6 +179,7 @@ class ApiClient {
       'password': password,
     })) as Map<String, dynamic>;
     _accessToken = data['access_token'] as String?;
+    await _persistCredentials();
     return data;
   }
 
@@ -177,6 +188,12 @@ class ApiClient {
     await _post('/auth/logout');
     _cookie = null;
     _accessToken = null;
+    await _storage.clearCredentials();
+  }
+
+  Future<void> _persistCredentials() async {
+    if (_cookie != null) await _storage.writeCookie(_cookie!);
+    if (_accessToken != null) await _storage.writeAccessToken(_accessToken!);
   }
 
   /// Return the currently authenticated user.
