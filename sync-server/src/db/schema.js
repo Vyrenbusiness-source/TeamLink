@@ -1,6 +1,9 @@
+'use strict';
+
 const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
+const { runMigrations } = require('./migrate');
 
 let db;
 
@@ -21,71 +24,8 @@ function initDb() {
     db.pragma('journal_mode = WAL');
   }
   db.pragma('foreign_keys = ON');
-  applySchema(db);
+  runMigrations(db);
   return db;
-}
-
-function applySchema(database) {
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      email TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      created_at INTEGER NOT NULL DEFAULT (unixepoch())
-    );
-
-    CREATE TABLE IF NOT EXISTS projects (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      created_at INTEGER NOT NULL DEFAULT (unixepoch())
-    );
-
-    CREATE TABLE IF NOT EXISTS users_projects (
-      user_id TEXT NOT NULL REFERENCES users(id),
-      project_id TEXT NOT NULL REFERENCES projects(id),
-      role TEXT NOT NULL DEFAULT 'member',
-      PRIMARY KEY (user_id, project_id)
-    );
-
-    CREATE TABLE IF NOT EXISTS tasks (
-      id TEXT PRIMARY KEY,
-      project_id TEXT NOT NULL REFERENCES projects(id),
-      title TEXT NOT NULL,
-      deadline INTEGER,
-      assignee_id TEXT REFERENCES users(id),
-      status TEXT NOT NULL DEFAULT 'open',
-      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-      updated_at INTEGER NOT NULL DEFAULT (unixepoch())
-    );
-
-    CREATE TABLE IF NOT EXISTS notes (
-      id TEXT PRIMARY KEY,
-      project_id TEXT NOT NULL REFERENCES projects(id),
-      content TEXT NOT NULL DEFAULT '',
-      updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
-      updated_by TEXT REFERENCES users(id)
-    );
-
-    CREATE TABLE IF NOT EXISTS messages (
-      id TEXT PRIMARY KEY,
-      sender_id TEXT NOT NULL REFERENCES users(id),
-      recipient_id TEXT NOT NULL REFERENCES users(id),
-      content TEXT NOT NULL,
-      created_at INTEGER NOT NULL DEFAULT (unixepoch())
-    );
-
-    CREATE TABLE IF NOT EXISTS invite_tokens (
-      token TEXT PRIMARY KEY,
-      project_id TEXT REFERENCES projects(id),
-      role TEXT NOT NULL DEFAULT 'member',
-      created_by TEXT REFERENCES users(id),
-      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-      expires_at INTEGER,
-      used_by TEXT REFERENCES users(id),
-      used_at INTEGER
-    );
-  `);
 }
 
 module.exports = { initDb, getDb };
