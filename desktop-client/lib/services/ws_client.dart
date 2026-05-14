@@ -3,6 +3,8 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:desktop_client/services/api_client.dart';
+import 'package:desktop_client/services/ws_events.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -11,12 +13,12 @@ class WsClient {
 
   static final WsClient instance = WsClient._();
 
-  String _wsUrl = 'ws://localhost:3000';
+  String _wsBaseUrl = 'ws://localhost:3000';
 
-  /// Update the WebSocket URL and force-reconnect.
+  /// Update the WebSocket base URL and force-reconnect if connected.
   void setUrl(String url) {
-    if (url == _wsUrl) return;
-    _wsUrl = url;
+    if (url == _wsBaseUrl) return;
+    _wsBaseUrl = url;
     if (_userId != null || _projectId != null) {
       _subscription?.cancel();
       _subscription = null;
@@ -56,6 +58,15 @@ class WsClient {
     _connect();
   }
 
+  Uri _buildUri() {
+    final token = ApiClient.instance.accessToken;
+    final base = _wsBaseUrl;
+    if (token != null) {
+      return Uri.parse('$base?token=${Uri.encodeComponent(token)}');
+    }
+    return Uri.parse(base);
+  }
+
   void _connect() {
     if (_disposed) return;
     if (_userId == null && _projectId == null) return;
@@ -69,7 +80,7 @@ class WsClient {
     _channel?.sink.close();
 
     try {
-      _channel = WebSocketChannel.connect(Uri.parse(_wsUrl));
+      _channel = WebSocketChannel.connect(_buildUri());
     } catch (_) {
       _connecting = false;
       _scheduleReconnect();
@@ -78,11 +89,22 @@ class WsClient {
 
     _subscription = _channel!.stream.listen(
       (data) {
-        // First successful message ⇒ connection is healthy, reset backoff.
         _backoff = _initialBackoff;
         try {
           final msg =
               jsonDecode(data as String) as Map<String, dynamic>;
+          // welcome confirms auth — send project join if needed
+          if (msg['type'] == WsEvent.welcome) {
+            if (_projectId != null) {
+              _channel!.sink.add(
+                jsonEncode({
+                  'type': WsEvent.join,
+                  'projectId': _projectId,
+                }),
+              );
+            }
+            return;
+          }
           _controller.add(msg);
         } catch (_) {}
       },
@@ -90,17 +112,6 @@ class WsClient {
       onDone: _scheduleReconnect,
       cancelOnError: true,
     );
-
-    if (_userId != null) {
-      _channel!.sink.add(
-        jsonEncode({'type': 'join_user', 'userId': _userId}),
-      );
-    }
-    if (_projectId != null) {
-      _channel!.sink.add(
-        jsonEncode({'type': 'join', 'projectId': _projectId}),
-      );
-    }
 
     _connecting = false;
   }

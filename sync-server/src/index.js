@@ -5,6 +5,7 @@ const app = require('./app');
 const { initDb } = require('./db/schema');
 const { startTunnel, stopTunnel } = require('./utils/cloudflared');
 const { verifyAccessToken } = require('./middleware/auth');
+const { setupWsHandler } = require('./ws/handler');
 const logger = require('./utils/logger');
 
 const PORT = process.env.PORT || 3000;
@@ -54,23 +55,7 @@ httpServer.on('upgrade', (req, socket, head) => {
   });
 });
 
-wss.on('connection', (ws) => {
-  ws.on('message', (data) => {
-    let msg;
-    try {
-      msg = JSON.parse(data.toString());
-    } catch {
-      return; // never echo unparseable frames
-    }
-    if (!msg || typeof msg !== 'object') return;
-    // ws.userId is set from the validated session, never from the client.
-    if (msg.type === 'join' && typeof msg.projectId === 'string') {
-      ws.projectId = msg.projectId;
-    }
-    // No generic broadcast — routes emit targeted messages via
-    // wss.clients.forEach using the verified ws.userId / ws.projectId.
-  });
-});
+setupWsHandler(wss);
 
 httpServer.listen(PORT, () => {
   logger.info({ port: PORT }, 'TeamLink server running');

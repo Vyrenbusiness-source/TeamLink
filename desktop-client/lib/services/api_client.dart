@@ -47,10 +47,14 @@ class ApiClient {
 
   final HttpClient _http = HttpClient();
   String? _cookie;
+  String? _accessToken;
   String _baseUrl = 'http://localhost:3000';
 
   /// Whether the client currently holds a session cookie.
   bool get hasSession => _cookie != null;
+
+  /// JWT access token received during the last login/register, if any.
+  String? get accessToken => _accessToken;
 
   /// Current HTTP base URL (no trailing slash).
   String get baseUrl => _baseUrl;
@@ -60,9 +64,10 @@ class ApiClient {
     _baseUrl = url.replaceAll(RegExp(r'/+$'), '');
   }
 
-  /// Forget the session cookie (used when switching servers).
+  /// Forget the session cookie and access token (used when switching servers).
   void clearSession() {
     _cookie = null;
+    _accessToken = null;
   }
 
   void _saveCookies(HttpClientResponse res) {
@@ -138,28 +143,34 @@ class ApiClient {
   Future<Map<String, dynamic>> login({
     required String email,
     required String password,
-  }) async =>
-      (await _post('/auth/login', {
-        'email': email,
-        'password': password,
-      })) as Map<String, dynamic>;
+  }) async {
+    final data =
+        (await _post('/auth/login', {'email': email, 'password': password}))
+            as Map<String, dynamic>;
+    _accessToken = data['access_token'] as String?;
+    return data;
+  }
 
   /// Create a new account.
   Future<Map<String, dynamic>> register({
     required String name,
     required String email,
     required String password,
-  }) async =>
-      (await _post('/auth/register', {
-        'name': name,
-        'email': email,
-        'password': password,
-      })) as Map<String, dynamic>;
+  }) async {
+    final data = (await _post('/auth/register', {
+      'name': name,
+      'email': email,
+      'password': password,
+    })) as Map<String, dynamic>;
+    _accessToken = data['access_token'] as String?;
+    return data;
+  }
 
   /// End the current session and clear the stored cookie.
   Future<void> logout() async {
     await _post('/auth/logout');
     _cookie = null;
+    _accessToken = null;
   }
 
   /// Return the currently authenticated user.

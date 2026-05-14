@@ -28,7 +28,9 @@ class AuthNotifier extends AsyncNotifier<User?> {
         email: email,
         password: password,
       );
-      state = AsyncData(User.fromJson(data));
+      final user = User.fromJson(data['user'] as Map<String, dynamic>);
+      state = AsyncData(user);
+      WsClient.instance.joinUser(user.id);
       _refreshAllCaches();
     } catch (_) {
       state = previous;
@@ -50,7 +52,9 @@ class AuthNotifier extends AsyncNotifier<User?> {
         email: email,
         password: password,
       );
-      state = AsyncData(User.fromJson(data));
+      final user = User.fromJson(data['user'] as Map<String, dynamic>);
+      state = AsyncData(user);
+      WsClient.instance.joinUser(user.id);
       _refreshAllCaches();
     } catch (_) {
       state = previous;
