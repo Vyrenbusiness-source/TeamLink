@@ -1,0 +1,30 @@
+{
+  "name": "teamlink",
+  "private": true,
+  "version": "0.1.0",
+  "description": "TeamLink monorepo root — pnpm workspaces for JS packages, melos for Dart packages.",
+  "packageManager": "pnpm@9.12.0",
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "scripts": {
+    "server:dev": "pnpm --filter ./sync-server run dev",
+    "server:start": "pnpm --filter ./sync-server start",
+    "server:test": "pnpm --filter ./sync-server test",
+    "models:generate": "pnpm --filter ./shared-models run generate",
+    "client:get": "cd desktop-client && flutter pub get",
+    "client:analyze": "cd desktop-client && flutter analyze",
+    "client:test": "cd desktop-client && flutter test",
+    "client:build:windows": "cd desktop-client && flutter build windows --release",
+    "bootstrap": "pnpm install && pnpm run models:generate && pnpm run client:get",
+    "melos:bootstrap": "melos bootstrap",
+    "melos:analyze": "melos run analyze",
+    "melos:test": "melos run test",
+    "lint": "pnpm --filter ./sync-server run lint",
+    "format": "pnpm --filter ./sync-server run format"
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3"
+  }
+}

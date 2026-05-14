@@ -5,7 +5,9 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "test": "jest"
+    "test": "jest",
+    "lint": "eslint \"src/**/*.js\"",
+    "format": "prettier --write \"src/**/*.{js,json}\""
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
