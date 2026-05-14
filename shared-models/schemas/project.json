@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "project",
+  "type": "object",
+  "required": ["id", "name"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "name": { "type": "string", "minLength": 1 },
+    "created_at": { "type": "integer" },
+    "members": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["user_id", "role"],
+        "properties": {
+          "user_id": { "type": "string" },
+          "role": { "type": "string", "enum": ["lead", "member", "observer"] }
+        }
+      }
+    }
+  }
+}

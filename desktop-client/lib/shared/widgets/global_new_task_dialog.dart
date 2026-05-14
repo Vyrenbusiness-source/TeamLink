@@ -1,0 +1,226 @@
+// ignore_for_file: public_member_api_docs
+
+import 'package:desktop_client/features/projects/project_providers.dart';
+import 'package:desktop_client/features/projects/project_repository.dart';
+import 'package:desktop_client/l10n/app_strings.dart';
+import 'package:desktop_client/services/api_client.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+typedef CreateGlobalTaskCallback = Future<void> Function({
+  required String projectId,
+  required String title,
+  int? deadline,
+  String? assigneeId,
+});
+
+class GlobalNewTaskDialog extends ConsumerStatefulWidget {
+  const GlobalNewTaskDialog({required this.onCreate, super.key});
+
+  /// Performs the creation. The widget handles validation, loading state,
+  /// error display and dismissal.
+  final CreateGlobalTaskCallback onCreate;
+
+  @override
+  ConsumerState<GlobalNewTaskDialog> createState() =>
+      _GlobalNewTaskDialogState();
+}
+
+class _GlobalNewTaskDialogState extends ConsumerState<GlobalNewTaskDialog> {
+  final _titleCtrl = TextEditingController();
+  String? _projectId;
+  DateTime? _deadline;
+  String? _assigneeId;
+  bool _loading = false;
+  String? _error;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final projects = ref.read(projectsProvider).valueOrNull ?? const [];
+    if (projects.isEmpty) return;
+    if (_projectId == null || !projects.any((p) => p.id == _projectId)) {
+      _projectId = projects.first.id;
+    }
+  }
+
+  @override
+  void dispose() {
+    _titleCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDeadline() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now().add(const Duration(days: 7)),
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (!mounted) return;
+    if (picked != null) setState(() => _deadline = picked);
+  }
+
+  Future<void> _submit() async {
+    final s = ref.read(appStringsProvider);
+    final title = _titleCtrl.text.trim();
+    if (title.isEmpty) {
+      setState(() => _error = s.createTaskTitleEmpty);
+      return;
+    }
+    if (_projectId == null) {
+      setState(() => _error = s.createTaskProjectRequired);
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      await widget.onCreate(
+        projectId: _projectId!,
+        title: title,
+        deadline:
+            _deadline != null ? _deadline!.millisecondsSinceEpoch ~/ 1000 : null,
+        assigneeId: _assigneeId,
+      );
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = humanizeError(e);
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final projectsAsync = ref.watch(projectsProvider);
+    final projects = projectsAsync.valueOrNull ?? const [];
+    if (_projectId == null && projects.isNotEmpty) {
+      _projectId = projects.first.id;
+    }
+    final members = _projectId != null
+        ? ref.watch(membersProvider(_projectId!)).valueOrNull ??
+            <MemberDetail>[]
+        : <MemberDetail>[];
+    // Reset stale assignee when the chosen user is no longer in this project.
+    if (_assigneeId != null && !members.any((m) => m.id == _assigneeId)) {
+      _assigneeId = null;
+    }
+    final s = ref.watch(appStringsProvider);
+
+    return AlertDialog(
+      title: Text(s.createTaskTitle),
+      content: SizedBox(
+        width: 360,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (projectsAsync.isLoading && projects.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Center(
+                  child: SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+              )
+            else
+              DropdownButtonFormField<String>(
+                value: _projectId,
+                decoration: InputDecoration(
+                  labelText: s.createTaskProjectLabel,
+                  border: const OutlineInputBorder(),
+                ),
+                items: projects
+                    .map(
+                      (p) =>
+                          DropdownMenuItem(value: p.id, child: Text(p.name)),
+                    )
+                    .toList(),
+                onChanged: (v) => setState(() {
+                  _projectId = v;
+                  _assigneeId = null;
+                }),
+              ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _titleCtrl,
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: s.createTaskTitleLabel,
+                border: const OutlineInputBorder(),
+              ),
+              onSubmitted: (_) => _submit(),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _pickDeadline,
+              icon: const Icon(Icons.calendar_today, size: 16),
+              label: Text(
+                _deadline == null
+                    ? s.createTaskPickDeadline
+                    : '${_deadline!.day.toString().padLeft(2, '0')}.${_deadline!.month.toString().padLeft(2, '0')}.${_deadline!.year}',
+              ),
+            ),
+            if (_deadline != null) ...[
+              const SizedBox(height: 4),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => setState(() => _deadline = null),
+                  child: Text(s.createTaskRemoveDeadline),
+                ),
+              ),
+            ],
+            if (_projectId != null) ...[
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: _assigneeId,
+                decoration: InputDecoration(
+                  labelText: s.createTaskAssigneeLabel,
+                  border: const OutlineInputBorder(),
+                ),
+                items: [
+                  DropdownMenuItem(child: Text(s.createTaskAssigneeUnassigned)),
+                  ...members.map(
+                    (m) =>
+                        DropdownMenuItem(value: m.id, child: Text(m.name)),
+                  ),
+                ],
+                onChanged: (v) => setState(() => _assigneeId = v),
+              ),
+            ],
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                _error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _loading ? null : () => Navigator.of(context).pop(),
+          child: Text(s.cancel),
+        ),
+        FilledButton(
+          onPressed: _loading ? null : _submit,
+          child: _loading
+              ? const SizedBox.square(
+                  dimension: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Text(s.createTaskSubmit),
+        ),
+      ],
+    );
+  }
+}

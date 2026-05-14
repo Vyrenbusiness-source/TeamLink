@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "user",
+  "type": "object",
+  "required": ["id", "name", "email"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "name": { "type": "string", "minLength": 1 },
+    "email": { "type": "string", "format": "email" },
+    "created_at": { "type": "integer", "description": "Unix timestamp" }
+  }
+}

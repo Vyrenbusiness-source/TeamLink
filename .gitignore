@@ -1,0 +1,18 @@
+node_modules/
+sync-server/data/
+*.db
+*.db-wal
+*.db-shm
+.dart_tool/
+desktop-client/build/
+desktop-client/.flutter-plugins
+desktop-client/.flutter-plugins-dependencies
+.env
+dist/*.msix
+dist/*.dmg
+# Bundled runtime (Node portable + cloudflared) – do not commit
+runtime/
+# Flutter SDK – local install only
+flutter/
+# Build artifacts
+TeamLink.exe

@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "message",
+  "type": "object",
+  "required": ["id", "sender_id", "recipient_id", "content"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "sender_id": { "type": "string" },
+    "recipient_id": { "type": "string" },
+    "content": { "type": "string", "minLength": 1 },
+    "created_at": { "type": "integer" }
+  }
+}
