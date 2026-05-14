@@ -1,0 +1,145 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── sync-server: ESLint + Prettier + Jest ─────────────────────────────────
+  sync-server:
+    name: sync-server · lint + test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sync-server
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: sync-server/package-lock.json
+
+      - run: npm ci
+
+      - name: lint (ESLint)
+        run: npm run lint
+
+      - name: format check (Prettier)
+        run: npx prettier --check "src/**/*.{js,json}" "tests/**/*.js"
+
+      - name: test (Jest)
+        run: npm test -- --ci --forceExit
+        env:
+          NODE_ENV: test
+
+  # ── shared-models: JSON-Schema-Validierung + Generator ───────────────────
+  shared-models:
+    name: shared-models · validate + generate
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: validate JSON schemas
+        run: |
+          node -e "
+            const fs = require('fs');
+            const dir = 'shared-models/schemas';
+            const files = fs.readdirSync(dir).filter(f => f.endsWith('.json'));
+            if (files.length === 0) { console.error('No schemas found'); process.exit(1); }
+            files.forEach(f => {
+              JSON.parse(fs.readFileSync(dir + '/' + f, 'utf8'));
+              console.log('OK: ' + f);
+            });
+            console.log('All ' + files.length + ' schemas valid.');
+          "
+
+      - name: smoke-test generator
+        run: node generate.js
+        working-directory: shared-models
+
+  # ── desktop-client: analyze + test (Ubuntu) ───────────────────────────────
+  desktop-client:
+    name: desktop-client · analyze + test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: pub get
+        run: flutter pub get
+        working-directory: desktop-client
+
+      - name: code generation (build_runner)
+        run: dart run build_runner build --delete-conflicting-outputs
+        working-directory: desktop-client
+
+      - name: format check (dart format)
+        run: |
+          find lib test -name "*.dart" ! -name "*.freezed.dart" ! -name "*.g.dart" -print0 \
+            | xargs -0 -r dart format --set-exit-if-changed
+        working-directory: desktop-client
+
+      - name: analyze
+        run: flutter analyze --fatal-warnings
+        working-directory: desktop-client
+
+      - name: test
+        run: flutter test --coverage
+        working-directory: desktop-client
+
+  # ── desktop-client: Windows Release Build + MSIX ─────────────────────────
+  desktop-client-build:
+    name: desktop-client · build Windows MSIX
+    runs-on: windows-latest
+    needs: desktop-client
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: pub get
+        run: flutter pub get
+        working-directory: desktop-client
+
+      - name: code generation (build_runner)
+        run: dart run build_runner build --delete-conflicting-outputs
+        working-directory: desktop-client
+
+      - name: build Windows release
+        run: flutter build windows --release
+        working-directory: desktop-client
+
+      - name: package MSIX
+        run: dart run msix:create
+        working-directory: desktop-client
+
+      - name: upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-msix
+          path: desktop-client/build/windows/x64/runner/Release/*.msix
+          if-no-files-found: error
+          retention-days: 7
