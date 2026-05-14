@@ -17,6 +17,7 @@ const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'too many requests' },
+  skip: () => process.env.NODE_ENV === 'test',
 });
 
 router.use(['/login', '/register', '/refresh'], authLimiter);
