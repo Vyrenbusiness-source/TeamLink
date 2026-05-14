@@ -10,6 +10,8 @@ desktop-client/.flutter-plugins-dependencies
 .env
 dist/*.msix
 dist/*.dmg
+dist/TeamLink/
+.build-cache/
 # Bundled runtime (Node portable + cloudflared) – do not commit
 runtime/
 # Flutter SDK – local install only
