@@ -2,6 +2,8 @@ const crypto = require('crypto');
 const express = require('express');
 const cors = require('cors');
 const session = require('express-session');
+const SqliteStore = require('better-sqlite3-session-store')(session);
+const { getDb } = require('./db/schema');
 const logger = require('./utils/logger');
 const requestLogger = require('./middleware/requestLogger');
 
@@ -68,7 +70,17 @@ app.set('trust proxy', 1);
 app.use(requestLogger);
 app.use(express.json());
 
+// Persistenter Session-Store auf Basis von better-sqlite3.
+// Unterdrueckt die 'MemoryStore is not designed for production' Warnung,
+// und ueberlebt zudem Server-Restarts (User bleiben eingeloggt).
 const sessionMiddleware = session({
+  store: new SqliteStore({
+    client: getDb(),
+    expired: {
+      clear: true,
+      intervalMs: 15 * 60 * 1000,
+    },
+  }),
   secret: sessionSecret,
   resave: false,
   saveUninitialized: false,

@@ -1,8 +1,13 @@
 require('dotenv').config();
 const { createServer } = require('http');
 const { WebSocketServer } = require('ws');
-const app = require('./app');
 const { initDb } = require('./db/schema');
+// DB MUSS vor app.js initialisiert sein, weil app.js den Session-Store
+// gegen die DB anlegt. Sonst wirft getDb() 'Database not initialized'
+// schon beim require.
+initDb();
+
+const app = require('./app');
 const { startTunnel, stopTunnel } = require('./utils/cloudflared');
 const { verifyAccessToken } = require('./middleware/auth');
 const { setupWsHandler } = require('./ws/handler');
@@ -10,8 +15,6 @@ const logger = require('./utils/logger');
 
 const PORT = process.env.PORT || 3000;
 const ENABLE_TUNNEL = process.env.ENABLE_TUNNEL !== '0';
-
-initDb();
 
 const httpServer = createServer(app);
 // noServer mode lets us run the session middleware on the upgrade request
