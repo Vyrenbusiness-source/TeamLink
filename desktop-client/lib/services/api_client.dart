@@ -224,12 +224,18 @@ class ApiClient {
     required String name,
     required String email,
     required String password,
-  }) async =>
-      (await _post('/invites/$token/accept', {
-        'name': name,
-        'email': email,
-        'password': password,
-      })) as Map<String, dynamic>;
+  }) async {
+    final data = (await _post('/invites/$token/accept', {
+      'name': name,
+      'email': email,
+      'password': password,
+    })) as Map<String, dynamic>;
+    // Server setzt eine Session-Cookie via _saveCookies, aber wir persistieren
+    // ihn hier explizit. Sonst geht der Cookie beim naechsten initFromStorage()
+    // verloren und der Joiner landet nach Register auf /login statt im Projekt.
+    await _persistCredentials();
+    return data;
+  }
 
   // ── Host info ─────────────────────────────────────────────────────────────
 

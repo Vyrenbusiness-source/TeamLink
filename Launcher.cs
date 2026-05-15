@@ -103,8 +103,33 @@ class Launcher
 
         AppDomain.CurrentDomain.ProcessExit += (s, e) => KillNode();
 
+        // Auf /health warten BEVOR Flutter startet. Sonst klickt der User
+        // schneller durch das Onboarding als der Server hochkommt und
+        // bekommt "Connection refused".
+        WaitForHealth(maxAttempts: 30, port: 3000);
+
         LaunchFlutter(flutterExe);
         KillNode();
+    }
+
+    static void WaitForHealth(int maxAttempts, int port)
+    {
+        using (var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromMilliseconds(800) })
+        {
+            for (int i = 0; i < maxAttempts; i++)
+            {
+                try
+                {
+                    var task = http.GetAsync("http://127.0.0.1:" + port + "/health");
+                    if (task.Wait(900) && task.Result.IsSuccessStatusCode) return;
+                }
+                catch { /* server still warming up */ }
+                System.Threading.Thread.Sleep(300);
+            }
+            // Wenn er nach ~9s nicht antwortet trotzdem Flutter starten -
+            // der User sieht dann eine konkrete Fehlermeldung statt einem
+            // stillen Hang.
+        }
     }
 
     static void LaunchFlutter(string flutterExe)

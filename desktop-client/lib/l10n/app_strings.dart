@@ -11,6 +11,7 @@ abstract class AppStrings {
   String get welcomeCreate;
   String get welcomeJoin;
   String get welcomeHint;
+  String get welcomeExistingAccount;
 
   // Onboarding – Account
   String get accountHostTitle;
@@ -218,6 +219,8 @@ class _AppStringsDe extends AppStrings {
       'Beim Erstellen läuft der Server auf deinem Rechner. '
       'Andere verbinden sich per Einladungscode automatisch über '
       'einen sicheren Cloudflare-Tunnel.';
+  @override String get welcomeExistingAccount =>
+      'Ich habe schon einen Account';
 
   @override String get accountHostTitle => 'Account anlegen';
   @override String get accountHostSubtitle =>
@@ -424,6 +427,7 @@ class _AppStringsEn extends AppStrings {
       'When creating, the server runs on your machine. '
       'Others connect via invite code automatically through '
       'a secure Cloudflare tunnel.';
+  @override String get welcomeExistingAccount => 'I already have an account';
 
   @override String get accountHostTitle => 'Create account';
   @override String get accountHostSubtitle =>

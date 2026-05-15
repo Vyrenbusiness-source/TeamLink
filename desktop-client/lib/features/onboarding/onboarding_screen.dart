@@ -8,6 +8,7 @@ import 'package:desktop_client/services/server_config.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 enum _Flow { unknown, host, joiner }
 
@@ -161,6 +162,17 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   // ── Joiner flow ────────────────────────────────────────────────────────────
 
+  /// "Ich habe schon einen Account": Onboarding als erledigt markieren und
+  /// als Host-Modus konfigurieren, damit der Router den User auf /login
+  /// weiterleitet. Sinnvoll wenn der Nutzer beim ersten Start aus Versehen
+  /// im Onboarding gelandet ist (z.B. nach Update mit geloeschter
+  /// onboarding_done-Flag oder neuem Bundle).
+  Future<void> _useExistingAccount() async {
+    await ref.read(serverConfigProvider.notifier).setHost();
+    await markOnboardingDone(ref);
+    if (mounted) context.go('/login');
+  }
+
   Future<void> _startJoinerFlow() async {
     setState(() {
       _flow = _Flow.joiner;
@@ -233,7 +245,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             email: email,
             password: password,
           );
+      // Auth muss VOR _finish neu geladen werden, sonst sieht der Router
+      // beim naechsten Redirect noch user=null und schiebt den User auf
+      // /login statt ins frische Projekt.
       ref.invalidate(authProvider);
+      await ref.read(authProvider.future);
       ref.invalidate(projectsProvider);
       await _finish();
     } catch (e) {
@@ -290,6 +306,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         return _WelcomeStep(
           onHost: _startHostFlow,
           onJoin: _startJoinerFlow,
+          onExistingAccount: _useExistingAccount,
         );
       case _Step.account:
         return _AccountFormStep(
@@ -350,10 +367,15 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 // ── Step widgets ─────────────────────────────────────────────────────────────
 
 class _WelcomeStep extends ConsumerWidget {
-  const _WelcomeStep({required this.onHost, required this.onJoin});
+  const _WelcomeStep({
+    required this.onHost,
+    required this.onJoin,
+    required this.onExistingAccount,
+  });
 
   final VoidCallback onHost;
   final VoidCallback onJoin;
+  final VoidCallback onExistingAccount;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -397,6 +419,11 @@ class _WelcomeStep extends ConsumerWidget {
             minimumSize: const Size(double.infinity, 52),
           ),
           child: Text(s.welcomeJoin),
+        ),
+        const SizedBox(height: 12),
+        TextButton(
+          onPressed: onExistingAccount,
+          child: Text(s.welcomeExistingAccount),
         ),
         const SizedBox(height: 16),
         Text(

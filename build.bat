@@ -124,6 +124,7 @@ echo [3/7] Launcher kompilieren ...
   /reference:System.Windows.Forms.dll ^
   /reference:System.Drawing.dll ^
   /reference:System.dll ^
+  /reference:System.Net.Http.dll ^
   "%ROOT%\Launcher.cs"
 if errorlevel 1 (
   echo [X] csc.exe ist fehlgeschlagen.
