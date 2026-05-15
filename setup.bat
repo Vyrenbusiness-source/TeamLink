@@ -212,7 +212,7 @@ popd
 echo     OK: Codegen abgeschlossen.
 
 REM ----------------------------------------------------------------
-REM 9) sync-server .env aus .env.example
+REM 9) sync-server .env mit echten Zufalls-Secrets erzeugen
 REM ----------------------------------------------------------------
 set /a STEP+=1
 echo.
@@ -220,16 +220,27 @@ echo [!STEP!/9] sync-server .env vorbereiten ...
 if exist "%ROOT%\sync-server\.env" (
   echo     OK: sync-server\.env existiert bereits - nicht ueberschrieben.
 ) else (
-  if exist "%ROOT%\sync-server\.env.example" (
-    copy /Y "%ROOT%\sync-server\.env.example" "%ROOT%\sync-server\.env" >nul
-    if errorlevel 1 (
-      echo     [!] Konnte .env nicht aus .env.example kopieren.
-    ) else (
-      echo     OK: sync-server\.env aus .env.example angelegt.
-      echo     [i] WICHTIG: JWT_SECRET in sync-server\.env aendern!
+  REM 3 voneinander unabhaengige 48-Byte Hex-Secrets via node erzeugen.
+  for /f "tokens=*" %%s in ('node -e "console.log(require('crypto').randomBytes(48).toString('hex'))" 2^>nul') do set "SESSION_SECRET=%%s"
+  for /f "tokens=*" %%s in ('node -e "console.log(require('crypto').randomBytes(48).toString('hex'))" 2^>nul') do set "JWT_ACCESS_SECRET=%%s"
+  for /f "tokens=*" %%s in ('node -e "console.log(require('crypto').randomBytes(48).toString('hex'))" 2^>nul') do set "JWT_REFRESH_SECRET=%%s"
+  if not defined SESSION_SECRET (
+    echo     [!] Konnte keine zufaelligen Secrets via node erzeugen.
+    echo         Fallback: aus .env.example kopieren - bitte Werte manuell ersetzen.
+    if exist "%ROOT%\sync-server\.env.example" (
+      copy /Y "%ROOT%\sync-server\.env.example" "%ROOT%\sync-server\.env" >nul
     )
   ) else (
-    echo     [!] sync-server\.env.example fehlt - .env nicht angelegt.
+    (
+      echo PORT=3000
+      echo DB_PATH=data/teamlink.db
+      echo NODE_ENV=production
+      echo SESSION_SECRET=!SESSION_SECRET!
+      echo ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+      echo JWT_ACCESS_SECRET=!JWT_ACCESS_SECRET!
+      echo JWT_REFRESH_SECRET=!JWT_REFRESH_SECRET!
+    ) > "%ROOT%\sync-server\.env"
+    echo     OK: sync-server\.env mit zufaelligen Secrets angelegt.
   )
 )
 
