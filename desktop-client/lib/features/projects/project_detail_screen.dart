@@ -169,21 +169,16 @@ class ProjectDetailScreen extends ConsumerWidget {
   }
 
   Future<void> _showInviteDialog(BuildContext context, WidgetRef ref) async {
-    await showDialog<void>(
+    // The dialog handles token creation, tunnel resolution and clipboard
+    // copy on its own. We only refresh the member list when it indicates
+    // an invite was successfully generated.
+    final created = await showDialog<bool>(
       context: context,
-      builder: (_) => InviteMemberDialog(
-        projectId: projectId,
-        onInvite: ({email, username, required role}) async {
-          await ref.read(projectRepositoryProvider).inviteMember(
-                projectId,
-                email: email,
-                username: username,
-                role: role,
-              );
-          ref.invalidate(membersProvider(projectId));
-        },
-      ),
+      builder: (_) => InviteMemberDialog(projectId: projectId),
     );
+    if (created == true) {
+      ref.invalidate(membersProvider(projectId));
+    }
   }
 }
 

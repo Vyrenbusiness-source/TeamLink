@@ -149,6 +149,8 @@ abstract class AppStrings {
   String get inviteMemberRequired;
   String get inviteMemberRoleLabel;
   String get inviteMemberSubmit;
+  String get inviteMemberTokenSubtitle;
+  String get inviteMemberTokenFooter;
 
   // Task card
   String get taskOverdue;
@@ -355,6 +357,12 @@ class _AppStringsDe extends AppStrings {
   @override String get inviteMemberRequired => 'Eingabe erforderlich';
   @override String get inviteMemberRoleLabel => 'Rolle';
   @override String get inviteMemberSubmit => 'Einladen';
+  @override String get inviteMemberTokenSubtitle =>
+      'Schicke diesen Einladungscode per Chat, E-Mail oder beliebigem Kanal. '
+      'Die eingeladene Person fügt ihn beim ersten Start ein und legt selbst '
+      'einen Account an.';
+  @override String get inviteMemberTokenFooter =>
+      'Der Code ist 7 Tage gültig und nur einmal verwendbar.';
 
   @override String get taskOverdue => 'Überfällig';
   @override String get taskToday => 'Heute';
@@ -555,6 +563,11 @@ class _AppStringsEn extends AppStrings {
   @override String get inviteMemberRequired => 'Input required';
   @override String get inviteMemberRoleLabel => 'Role';
   @override String get inviteMemberSubmit => 'Invite';
+  @override String get inviteMemberTokenSubtitle =>
+      'Share this invite code via chat, email or any channel. The invited '
+      'person pastes it on first launch and creates their own account.';
+  @override String get inviteMemberTokenFooter =>
+      'The code is valid for 7 days and can only be used once.';
 
   @override String get taskOverdue => 'Overdue';
   @override String get taskToday => 'Today';

@@ -206,18 +206,11 @@ class _ProjectsView extends ConsumerWidget {
     WidgetRef ref,
     String projectId,
   ) async {
-    await showDialog<void>(
+    await showDialog<bool>(
       context: context,
       builder: (_) => InviteMemberDialog(
         projectId: projectId,
         showRole: false,
-        onInvite: ({email, username, required role}) async {
-          await ref.read(apiClientProvider).inviteMember(
-                projectId: projectId,
-                email: email,
-                username: username,
-              );
-        },
       ),
     );
   }
