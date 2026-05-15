@@ -1,0 +1,32 @@
+name: teamlink
+repository: https://github.com/Vyrenbusiness-source/TeamLink
+
+packages:
+  - desktop-client
+
+command:
+  bootstrap:
+    runPubGetInParallel: true
+  version:
+    branch: main
+
+ide:
+  intellij:
+    enabled: false
+
+scripts:
+  analyze:
+    description: Run flutter analyze across all Dart packages.
+    run: melos exec -c 1 -- flutter analyze
+  test:
+    description: Run flutter test across all Dart packages.
+    run: melos exec -c 1 -- flutter test
+  format:
+    description: Run dart format across all Dart packages.
+    run: melos exec -c 1 -- dart format .
+  build:windows:
+    description: Build the Windows release for desktop packages.
+    run: melos exec --scope="desktop_client" -- flutter build windows --release
+  clean:
+    description: Clean all Dart packages.
+    run: melos exec -c 1 -- flutter clean

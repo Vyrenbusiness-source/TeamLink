@@ -2,21 +2,14 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "project",
   "type": "object",
-  "required": ["id", "name"],
+  "additionalProperties": false,
+  "required": ["id", "name", "owner_id", "created_at", "updated_at"],
   "properties": {
     "id": { "type": "string", "format": "uuid" },
     "name": { "type": "string", "minLength": 1 },
-    "created_at": { "type": "integer" },
-    "members": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["user_id", "role"],
-        "properties": {
-          "user_id": { "type": "string" },
-          "role": { "type": "string", "enum": ["lead", "member", "observer"] }
-        }
-      }
-    }
+    "description": { "type": ["string", "null"] },
+    "owner_id": { "type": "string", "format": "uuid" },
+    "created_at": { "type": "integer", "description": "Unix ms timestamp" },
+    "updated_at": { "type": "integer", "description": "Unix ms timestamp — LWW conflict resolution" }
   }
 }

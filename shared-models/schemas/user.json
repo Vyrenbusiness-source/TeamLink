@@ -2,11 +2,14 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "user",
   "type": "object",
-  "required": ["id", "name", "email"],
+  "additionalProperties": false,
+  "required": ["id", "name", "email", "created_at", "updated_at"],
   "properties": {
     "id": { "type": "string", "format": "uuid" },
     "name": { "type": "string", "minLength": 1 },
     "email": { "type": "string", "format": "email" },
-    "created_at": { "type": "integer", "description": "Unix timestamp" }
+    "avatar_url": { "type": ["string", "null"] },
+    "created_at": { "type": "integer", "description": "Unix ms timestamp" },
+    "updated_at": { "type": "integer", "description": "Unix ms timestamp — LWW conflict resolution" }
   }
 }

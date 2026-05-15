@@ -2,12 +2,24 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "message",
   "type": "object",
-  "required": ["id", "sender_id", "recipient_id", "content"],
+  "additionalProperties": false,
+  "required": ["id", "sender_id", "recipient_id", "content", "created_at"],
   "properties": {
     "id": { "type": "string", "format": "uuid" },
-    "sender_id": { "type": "string" },
-    "recipient_id": { "type": "string" },
+    "sender_id": { "type": "string", "format": "uuid" },
+    "recipient_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "User id for DM or project id for channel messages"
+    },
+    "project_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Set when message belongs to a project channel; null for DMs"
+    },
     "content": { "type": "string", "minLength": 1 },
-    "created_at": { "type": "integer" }
+    "read_at": { "type": ["integer", "null"], "description": "Unix ms timestamp; null = unread" },
+    "created_at": { "type": "integer", "description": "Unix ms timestamp" },
+    "updated_at": { "type": ["integer", "null"], "description": "Unix ms timestamp; set on edit" }
   }
 }
