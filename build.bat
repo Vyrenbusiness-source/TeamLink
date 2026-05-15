@@ -268,9 +268,9 @@ REM ----------------------------------------------------------------
 REM 9) Bundle als ZIP packen fuer einfache Verteilung.
 REM ----------------------------------------------------------------
 echo [7/7] Bundle in ZIP packen ...
-for /f "tokens=1-3 delims=." %%a in ('"%BUNDLE_NODE%" -p "require('./sync-server/package.json').version || '0.0.0'"') do (
-  set "APP_VERSION=%%a.%%b.%%c"
-)
+REM Version aus package.json via PowerShell - cmd-quoting fuer 'node -p' ist
+REM zu fragil (Single-Quotes im JSON-Pfad, Dots, Pipes).
+for /f "delims=" %%v in ('powershell -NoProfile -Command "(Get-Content -Raw '%ROOT%\sync-server\package.json' | ConvertFrom-Json).version"') do set "APP_VERSION=%%v"
 if "!APP_VERSION!"=="" set "APP_VERSION=0.1.0"
 set "ZIP_PATH=%ROOT%\dist\TeamLink-v!APP_VERSION!-win-x64.zip"
 if exist "!ZIP_PATH!" del /q "!ZIP_PATH!"

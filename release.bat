@@ -68,14 +68,8 @@ if errorlevel 1 (
 REM ----------------------------------------------------------------
 REM 4) Version aus dem gerade gebauten Bundle holen (gleiche Quelle wie build.bat)
 REM ----------------------------------------------------------------
-set "BUNDLE_NODE=%ROOT%\dist\TeamLink\runtime\node\node.exe"
-if not exist "%BUNDLE_NODE%" (
-  echo [X] Gebuendeltes Node fehlt: %BUNDLE_NODE%
-  exit /b 1
-)
-for /f "delims=" %%v in ('"%BUNDLE_NODE%" -p "require('./sync-server/package.json').version || '0.0.0'"') do (
-  set "APP_VERSION=%%v"
-)
+REM Version via PowerShell-JSON-Parser (cmd-Quoting fuer 'node -p' ist zu fragil).
+for /f "delims=" %%v in ('powershell -NoProfile -Command "(Get-Content -Raw '%ROOT%\sync-server\package.json' | ConvertFrom-Json).version"') do set "APP_VERSION=%%v"
 if "!APP_VERSION!"=="" (
   echo [X] Version aus package.json nicht ermittelbar.
   exit /b 1
