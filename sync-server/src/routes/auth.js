@@ -61,7 +61,17 @@ function issueTokenPair(userId) {
 }
 
 function publicUser(user) {
-  return { id: user.id, name: user.name, email: user.email, created_at: user.created_at };
+  // Must match shared-models/schemas/user.json. The dart client uses
+  // freezed's `required int updatedAt` cast, so omitting updated_at
+  // crashes the login flow with "type 'Null' is not a subtype of 'num'".
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    avatar_url: user.avatar_url ?? null,
+    created_at: user.created_at,
+    updated_at: user.updated_at,
+  };
 }
 
 // POST /auth/register
@@ -84,7 +94,7 @@ router.post('/register', async (req, res) => {
     ).run(id, name, email, passwordHash);
 
     const user = db
-      .prepare('SELECT id, name, email, created_at FROM users WHERE id = ?')
+      .prepare('SELECT id, name, email, avatar_url, created_at, updated_at FROM users WHERE id = ?')
       .get(id);
 
     const { accessToken, refreshToken } = issueTokenPair(id);
@@ -252,7 +262,7 @@ router.get('/me', (req, res) => {
   }
   const db = getDb();
   const user = db
-    .prepare('SELECT id, name, email, created_at FROM users WHERE id = ?')
+    .prepare('SELECT id, name, email, avatar_url, created_at, updated_at FROM users WHERE id = ?')
     .get(userId);
   if (!user) return res.status(401).json({ error: 'not authenticated' });
   return res.json(user);

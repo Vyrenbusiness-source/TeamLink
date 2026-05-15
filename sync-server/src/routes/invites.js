@@ -145,7 +145,9 @@ router.post('/:token/accept', inviteLimiter, async (req, res) => {
   }
 
   const user = db
-    .prepare('SELECT id, name, email, created_at FROM users WHERE id = ?')
+    .prepare(
+      'SELECT id, name, email, avatar_url, created_at, updated_at FROM users WHERE id = ?',
+    )
     .get(userId);
 
   // Regenerate the session id so a pre-existing (possibly attacker-fixed)
