@@ -14,6 +14,7 @@ import 'package:desktop_client/shared/widgets/empty_state.dart';
 import 'package:desktop_client/shared/widgets/skeleton.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 class ProjectDetailScreen extends ConsumerWidget {
   const ProjectDetailScreen({
@@ -37,6 +38,14 @@ class ProjectDetailScreen extends ConsumerWidget {
       length: 3,
       child: Scaffold(
         appBar: AppBar(
+          // context.go() baut keinen Navigator-Stack auf, daher zeigt Flutter
+          // keinen impliziten Zurueck-Pfeil. Hier expliziter Back-Button zur
+          // Hauptuebersicht.
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            tooltip: s.back,
+            onPressed: () => context.go('/'),
+          ),
           title: Text(project?.name ?? projectName),
           actions: [
             Consumer(

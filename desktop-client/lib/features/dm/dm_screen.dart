@@ -12,6 +12,7 @@ import 'package:desktop_client/shared/widgets/skeleton.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 class DmListScreen extends ConsumerStatefulWidget {
@@ -263,6 +264,10 @@ class _DmChatScreenState extends ConsumerState<DmChatScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => context.go('/dm'),
+        ),
         title: Row(
           children: [
             CircleAvatar(

@@ -118,11 +118,12 @@ router.post('/:token/accept', inviteLimiter, async (req, res) => {
 
   const userId = crypto.randomUUID();
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+  const normalizedEmail = String(email).trim().toLowerCase();
 
   const tx = db.transaction(() => {
     db.prepare(
       'INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)',
-    ).run(userId, name, email, passwordHash);
+    ).run(userId, name, normalizedEmail, passwordHash);
 
     if (invite.project_id) {
       db.prepare(

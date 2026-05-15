@@ -7,6 +7,7 @@ import 'package:desktop_client/services/api_client.dart';
 import 'package:desktop_client/shared/task_status_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 class TaskDetailScreen extends ConsumerStatefulWidget {
   const TaskDetailScreen({
@@ -137,18 +138,33 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
 
     return tasks.when(
       loading: () => Scaffold(
-        appBar: AppBar(),
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => context.go('/projects/${widget.projectId}'),
+          ),
+        ),
         body: const Center(child: CircularProgressIndicator()),
       ),
       error: (e, _) => Scaffold(
-        appBar: AppBar(),
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => context.go('/projects/${widget.projectId}'),
+          ),
+        ),
         body: Center(child: Text(e.toString())),
       ),
       data: (list) {
         final task = list.where((t) => t.id == widget.taskId).firstOrNull;
         if (task == null) {
           return Scaffold(
-            appBar: AppBar(),
+            appBar: AppBar(
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => context.go('/projects/${widget.projectId}'),
+              ),
+            ),
             body: const Center(child: Text('—')),
           );
         }
@@ -180,6 +196,11 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          tooltip: s.back,
+          onPressed: () => context.go('/projects/${widget.projectId}'),
+        ),
         title: Text(task.title, overflow: TextOverflow.ellipsis),
         actions: [
           IconButton(
@@ -258,6 +279,11 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          tooltip: s.cancel,
+          onPressed: _saving ? null : () => setState(() => _editing = false),
+        ),
         title: Text(s.taskDetailEditTitle),
         actions: [
           TextButton(

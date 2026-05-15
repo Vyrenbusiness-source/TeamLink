@@ -84,6 +84,10 @@ router.post('/register', async (req, res) => {
     return res.status(400).json({ error: 'password must be at least 8 characters' });
   }
 
+  // Email auf Kleinschreibung normalisieren - sonst kann ein User der bei
+  // Register 'A@b.c' und bei Login 'a@b.c' tippt sich nicht mehr einloggen.
+  const normalizedEmail = String(email).trim().toLowerCase();
+
   const db = getDb();
   const id = crypto.randomUUID();
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
@@ -91,7 +95,7 @@ router.post('/register', async (req, res) => {
   try {
     db.prepare(
       'INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)',
-    ).run(id, name, email, passwordHash);
+    ).run(id, name, normalizedEmail, passwordHash);
 
     const user = db
       .prepare('SELECT id, name, email, avatar_url, created_at, updated_at FROM users WHERE id = ?')
@@ -129,7 +133,8 @@ router.post('/login', async (req, res) => {
   }
 
   const db = getDb();
-  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  const normalizedEmail = String(email).trim().toLowerCase();
+  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(normalizedEmail);
   if (!user) {
     return res.status(401).json({ error: 'invalid credentials' });
   }

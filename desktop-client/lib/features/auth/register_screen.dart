@@ -1,3 +1,4 @@
+import 'package:desktop_client/features/onboarding/onboarding_provider.dart';
 import 'package:desktop_client/providers/auth_provider.dart';
 import 'package:desktop_client/services/api_client.dart';
 import 'package:flutter/material.dart';
@@ -226,6 +227,17 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       TextButton(
                         onPressed: () => context.go('/login'),
                         child: const Text('Bereits registriert? Anmelden'),
+                      ),
+                      const Divider(height: 24),
+                      TextButton.icon(
+                        onPressed: _loading
+                            ? null
+                            : () async {
+                                await resetOnboarding(ref);
+                                if (context.mounted) context.go('/onboarding');
+                              },
+                        icon: const Icon(Icons.vpn_key_outlined, size: 18),
+                        label: const Text('Mit Einladungscode beitreten'),
                       ),
                     ],
                   ),
