@@ -1,5 +1,7 @@
 # TeamLink
 
+[![DevConnect](https://devconnectplatform.com/api/badge/vyren)](https://devconnectplatform.com/u/vyren)
+
 Kollaborations-Desktop-App für kleine Teams — Aufgaben, geteilte Notizen und 1:1-Chat ohne externe Dienste. Läuft vollständig auf eigener Infrastruktur (on-premise).
 
 ---
